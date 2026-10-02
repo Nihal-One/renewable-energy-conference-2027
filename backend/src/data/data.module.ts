@@ -11,6 +11,6 @@ import { StorageModule } from '../storage/storage.module';
   imports: [PrismaModule, EmailModule, JwtModule, forwardRef(() => StorageModule)],
   controllers: [DataController],
   providers: [DataService, AdminDataGuard],
-  exports: [AdminDataGuard],
+  exports: [AdminDataGuard, DataService],
 })
 export class DataModule {}

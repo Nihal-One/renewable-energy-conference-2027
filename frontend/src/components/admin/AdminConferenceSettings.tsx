@@ -15,9 +15,24 @@ import {
   type PricingRow,
 } from "@/lib/conferenceSettings";
 
+const toUtcInputValue = (value?: string) => {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 16);
+};
+
+const toUtcIsoValue = (value: string) => {
+  if (!value) return null;
+  const date = new Date(`${value}:00.000Z`);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+};
+
 const AdminConferenceSettings = () => {
   const [dates, setDates] = useState<ImportantDateItem[]>(defaultImportantDates);
   const [pricing, setPricing] = useState<PricingRow[]>(defaultPricingRows);
+  const [conferenceStart, setConferenceStart] = useState("");
+  const [conferenceEnd, setConferenceEnd] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
 
@@ -26,16 +41,25 @@ const AdminConferenceSettings = () => {
       const { data, error } = await apiClient
         .from("site_data")
         .select("data_key,value")
-        .in("data_key", [importantDatesKey, registrationPricingKey]);
+        .in("data_key", [
+          importantDatesKey,
+          registrationPricingKey,
+          "conference_start_datetime_utc",
+          "conference_end_datetime_utc",
+        ]);
 
       if (error) {
         toast({ title: "Could not load settings", description: error.message, variant: "destructive" });
+        setIsLoading(false);
         return;
       }
 
       const values = Object.fromEntries((data || []).map((row: { data_key: string; value: string | null }) => [row.data_key, row.value || ""]));
       setDates(parseImportantDates(values[importantDatesKey]));
       setPricing(parsePricingRows(values[registrationPricingKey]));
+      setConferenceStart(toUtcInputValue(values.conference_start_datetime_utc));
+      setConferenceEnd(toUtcInputValue(values.conference_end_datetime_utc));
+      setIsLoading(false);
     };
 
     fetchSettings();
@@ -56,9 +80,20 @@ const AdminConferenceSettings = () => {
   };
 
   const handleSave = async () => {
+    const startValue = toUtcIsoValue(conferenceStart);
+    const endValue = toUtcIsoValue(conferenceEnd);
+    if ((conferenceStart && !startValue) || (conferenceEnd && !endValue)) {
+      toast({ title: "Invalid conference date/time", description: "Enter valid start and end times in UTC.", variant: "destructive" });
+      return;
+    }
+    if (startValue && endValue && Date.parse(endValue) < Date.parse(startValue)) {
+      toast({ title: "Invalid conference period", description: "The end time must be after the start time.", variant: "destructive" });
+      return;
+    }
+
     setIsSaving(true);
 
-    const { error } = await apiClient.from("site_data").upsert(
+    const { data: savedRows, error } = await apiClient.from("site_data").upsert(
       [
         {
           data_key: importantDatesKey,
@@ -76,6 +111,22 @@ const AdminConferenceSettings = () => {
           value_type: "json",
           is_public: true,
         },
+        {
+          data_key: "conference_start_datetime_utc",
+          label: "Conference Start Date/Time (UTC)",
+          value: startValue,
+          group_name: "conference",
+          value_type: "datetime",
+          is_public: true,
+        },
+        {
+          data_key: "conference_end_datetime_utc",
+          label: "Conference End Date/Time (UTC)",
+          value: endValue,
+          group_name: "conference",
+          value_type: "datetime",
+          is_public: true,
+        },
       ],
       { onConflict: "data_key" },
     );
@@ -87,6 +138,16 @@ const AdminConferenceSettings = () => {
       return;
     }
 
+    if (Array.isArray(savedRows)) {
+      const savedValues = Object.fromEntries(
+        savedRows.map((row: { data_key: string; value: string | null }) => [row.data_key, row.value || ""]),
+      );
+      setDates(parseImportantDates(savedValues[importantDatesKey]));
+      setPricing(parsePricingRows(savedValues[registrationPricingKey]));
+      setConferenceStart(toUtcInputValue(savedValues.conference_start_datetime_utc));
+      setConferenceEnd(toUtcInputValue(savedValues.conference_end_datetime_utc));
+    }
+
     toast({ title: "Conference settings saved" });
   };
 
@@ -94,11 +155,27 @@ const AdminConferenceSettings = () => {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-3">
         <CardTitle className="font-display">Important Dates & Pricing</CardTitle>
-        <Button onClick={handleSave} disabled={isSaving}>
-          {isSaving ? "Saving..." : "Save Changes"}
+        <Button onClick={handleSave} disabled={isSaving || isLoading}>
+          {isLoading ? "Loading..." : isSaving ? "Saving..." : "Save Changes"}
         </Button>
       </CardHeader>
       <CardContent className="space-y-8">
+        <div className="space-y-4">
+          <h3 className="font-display text-xl font-bold text-card-foreground">Conference Start and End (UTC)</h3>
+          <p className="text-sm text-muted-foreground">
+            Enter the scheduled times in UTC. The public countdown uses these saved values and updates automatically.
+          </p>
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="space-y-2 text-sm font-medium">
+              Conference starts (UTC)
+              <Input type="datetime-local" value={conferenceStart} onChange={(event) => setConferenceStart(event.target.value)} />
+            </label>
+            <label className="space-y-2 text-sm font-medium">
+              Conference ends (UTC)
+              <Input type="datetime-local" value={conferenceEnd} onChange={(event) => setConferenceEnd(event.target.value)} />
+            </label>
+          </div>
+        </div>
         <div className="space-y-4">
           <h3 className="font-display text-xl font-bold text-card-foreground">Important Dates</h3>
           {dates.map((item, index) => (

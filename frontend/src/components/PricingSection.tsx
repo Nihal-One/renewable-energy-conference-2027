@@ -6,15 +6,46 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiClient } from "@/integrations/api/client";
+import type { AccommodationOption } from "@/integrations/api/types";
+import {
+  createPaymentOrder,
+  cancelPaymentOrder,
+  getPaymentStatus,
+  openRazorpayCheckout,
+  quoteRegistration,
+  verifyRazorpayPayment,
+} from "@/integrations/api/payments";
 import { type ImportantDateItem, type PricingRow, toLocalDate, useConferenceSettings } from "@/lib/conferenceSettings";
 import CaptchaVerification from "@/components/CaptchaVerification";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
-const PENDING_REGISTRATION_KEY = "pendingRegistration";
 const SERVICE_CHARGE_RATE = 0.05;
 
-type PaymentProvider = "stripe" | "paypal";
+type PaymentProvider = "stripe" | "paypal" | "razorpay";
+
+// What the buyer picks in the UI. "card" is a Razorpay checkout limited to
+// credit/debit cards; every other choice maps straight to its own gateway.
+type PaymentChoice = "stripe" | "paypal" | "razorpay" | "card";
+
+const CHOICE_TO_PROVIDER: Record<PaymentChoice, PaymentProvider> = {
+  stripe: "stripe",
+  paypal: "paypal",
+  razorpay: "razorpay",
+  card: "razorpay",
+};
+
+// Button state machine (#1, #2): each phase drives the label and disabled state
+// so the buyer cannot double-submit or lose track of where a payment is.
+type PaymentPhase = "idle" | "creating" | "opening" | "processing" | "redirecting";
+
+const PHASE_LABELS: Record<PaymentPhase, string> = {
+  idle: "proceed to register",
+  creating: "Creating order…",
+  opening: "Opening checkout…",
+  processing: "Verifying payment…",
+  redirecting: "Redirecting…",
+};
 
 type CategoryKey =
   | "pre-speaker"
@@ -104,62 +135,6 @@ const initialForm: FormValues = {
 
 const formatUsd = (value: number) => `$${value.toFixed(value % 1 === 0 ? 0 : 2)}`;
 
-const appendPaymentParams = (
-  paymentUrl: string,
-  params: Record<string, string | number | null | undefined>,
-) => {
-  try {
-    const url = new URL(paymentUrl);
-
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== null && value !== undefined && String(value).trim()) {
-        url.searchParams.set(key, String(value));
-      }
-    });
-
-    return url.toString();
-  } catch {
-    return paymentUrl;
-  }
-};
-
-const buildMockPaymentRedirectUrl = (registrationId: string) => {
-  if (typeof window === "undefined") {
-    return "/registration/success";
-  }
-
-  const params = new URLSearchParams({
-    provider: "mock",
-    registration_id: registrationId,
-  });
-
-  return `${window.location.origin}/registration/success?${params.toString()}`;
-};
-
-const createStripeCheckoutSession = async (registrationId: string) => {
-  const { data, error } = await apiClient.functions.invoke<{ url?: string; error?: string }>("create-stripe-checkout", {
-    body: { registrationId },
-  });
-
-  if (error || !data?.url) {
-    throw new Error(data?.error || error?.message || "Could not create Stripe checkout session");
-  }
-
-  return data.url;
-};
-
-const createPayPalOrder = async (registrationId: string) => {
-  const { data, error } = await apiClient.functions.invoke<{ url?: string; error?: string }>("create-paypal-order", {
-    body: { registrationId },
-  });
-
-  if (error || !data?.url) {
-    throw new Error(data?.error || error?.message || "Could not create PayPal order");
-  }
-
-  return data.url;
-};
-
 const getToday = () => {
   const today = new Date();
   return new Date(today.getFullYear(), today.getMonth(), today.getDate());
@@ -212,8 +187,18 @@ const PricingSection = () => {
   const [participants, setParticipants] = useState(1);
   const [couponCode, setCouponCode] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
-  const [paymentProvider, setPaymentProvider] = useState<PaymentProvider>("stripe");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [accommodationOptions, setAccommodationOptions] = useState<AccommodationOption[]>([]);
+  const [accommodationOptionId, setAccommodationOptionId] = useState("");
+  const [accommodationCheckIn, setAccommodationCheckIn] = useState("");
+  const [accommodationCheckOut, setAccommodationCheckOut] = useState("");
+  const [accommodationQuote, setAccommodationQuote] = useState<Awaited<ReturnType<typeof quoteRegistration>> | null>(null);
+  const [accommodationQuoteError, setAccommodationQuoteError] = useState<string | null>(null);
+  const [accommodationQuoteLoading, setAccommodationQuoteLoading] = useState(false);
+  const [paymentChoice, setPaymentChoice] = useState<PaymentChoice>("razorpay");
+  const paymentProvider = CHOICE_TO_PROVIDER[paymentChoice];
+  const preferCard = paymentChoice === "card";
+  const [paymentPhase, setPaymentPhase] = useState<PaymentPhase>("idle");
+  const isSubmitting = paymentPhase !== "idle";
   const [isCaptchaVerified, setIsCaptchaVerified] = useState(false);
   const [hasAcceptedTerms, setHasAcceptedTerms] = useState(false);
   const [isTermsDialogOpen, setIsTermsDialogOpen] = useState(false);
@@ -245,54 +230,58 @@ const PricingSection = () => {
   const totalRegistrationPrice = Math.max(subtotalPrice - discount, 0);
   const serviceCharge = totalRegistrationPrice * SERVICE_CHARGE_RATE;
   const totalPrice = totalRegistrationPrice + serviceCharge;
+  const selectedAccommodation = accommodationOptions.find((option) => option.id === accommodationOptionId);
+  const accommodationNights = accommodationCheckIn && accommodationCheckOut
+    ? Math.max(0, (Date.parse(`${accommodationCheckOut}T00:00:00Z`) - Date.parse(`${accommodationCheckIn}T00:00:00Z`)) / 86_400_000)
+    : 0;
+  const accommodationTotal = accommodationQuote?.accommodation?.total ?? 0;
 
-  const paymentLinks = useMemo(() => {
-    const providerLinks = {
-      stripe: {
-        speaker: process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_SPEAKER || process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_ACADEMIC,
-        poster: process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_POSTER || process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_BUSINESS,
-        student: process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_STUDENT,
-        delegate: process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_DELEGATE || process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_BUSINESS,
-        virtual: process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK_VIRTUAL,
-      },
-      paypal: {
-        speaker: process.env.NEXT_PUBLIC_PAYPAL_PAYMENT_LINK_SPEAKER,
-        poster: process.env.NEXT_PUBLIC_PAYPAL_PAYMENT_LINK_POSTER,
-        student: process.env.NEXT_PUBLIC_PAYPAL_PAYMENT_LINK_STUDENT,
-        delegate: process.env.NEXT_PUBLIC_PAYPAL_PAYMENT_LINK_DELEGATE,
-        virtual: process.env.NEXT_PUBLIC_PAYPAL_PAYMENT_LINK_VIRTUAL,
-      },
+  useEffect(() => {
+    let active = true;
+    void apiClient
+      .from("accommodation_options")
+      .select("*")
+      .eq("is_active", true)
+      .order("name", { ascending: true })
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error) {
+          toast({ title: "Accommodation unavailable", description: error.message, variant: "destructive" });
+          return;
+        }
+        setAccommodationOptions(data ?? []);
+      });
+    return () => {
+      active = false;
     };
+  }, [toast]);
 
-    const buildCategoryLinks = (provider: PaymentProvider) => ({
-      "pre-speaker": providerLinks[provider].speaker,
-      "pre-poster": providerLinks[provider].poster,
-      "pre-student": providerLinks[provider].student,
-      "pre-delegate": providerLinks[provider].delegate,
-      "pre-virtual": providerLinks[provider].virtual,
-      "early-speaker": providerLinks[provider].speaker,
-      "early-poster": providerLinks[provider].poster,
-      "early-student": providerLinks[provider].student,
-      "early-delegate": providerLinks[provider].delegate,
-      "early-virtual": providerLinks[provider].virtual,
-      "mid-speaker": providerLinks[provider].speaker,
-      "mid-poster": providerLinks[provider].poster,
-      "mid-student": providerLinks[provider].student,
-      "mid-delegate": providerLinks[provider].delegate,
-      "onspot-speaker": providerLinks[provider].speaker,
-      "onspot-poster": providerLinks[provider].poster,
-      "onspot-student": providerLinks[provider].student,
-      "onspot-delegate": providerLinks[provider].delegate,
+  useEffect(() => {
+    setAccommodationQuote(null);
+    setAccommodationQuoteError(null);
+    setAccommodationQuoteLoading(false);
+    if (!accommodationOptionId || !accommodationCheckIn || !accommodationCheckOut || accommodationNights < 1) return;
+
+    let active = true;
+    setAccommodationQuoteLoading(true);
+    void quoteRegistration({
+      planKey: selectedCategoryKey,
+      couponCode: appliedCoupon?.code || null,
+      quantity: participants,
+      accommodationOptionId,
+      accommodationCheckIn,
+      accommodationCheckOut,
+    }).then((quote) => {
+      if (active) setAccommodationQuote(quote);
+    }).catch((error: unknown) => {
+      if (active) setAccommodationQuoteError(error instanceof Error ? error.message : "Could not quote accommodation");
+    }).finally(() => {
+      if (active) setAccommodationQuoteLoading(false);
     });
-
-    return {
-      stripe: buildCategoryLinks("stripe"),
-      paypal: buildCategoryLinks("paypal"),
+    return () => {
+      active = false;
     };
-  }, []);
-
-  const paymentTestProvider = process.env.NEXT_PUBLIC_PAYMENT_TEST_PROVIDER;
-  const razorpayTestPaymentLink = process.env.NEXT_PUBLIC_RAZORPAY_TEST_PAYMENT_LINK;
+  }, [accommodationOptionId, accommodationCheckIn, accommodationCheckOut, accommodationNights, selectedCategoryKey, appliedCoupon?.code, participants]);
 
   useEffect(() => {
     if (availableCategories.length && !availableCategories.some((category) => category.key === selectedCategoryKey)) {
@@ -380,6 +369,10 @@ const PricingSection = () => {
     setParticipants(1);
     setCouponCode("");
     setAppliedCoupon(null);
+    setAccommodationOptionId("");
+    setAccommodationCheckIn("");
+    setAccommodationCheckOut("");
+    setAccommodationQuote(null);
     setIsCaptchaVerified(false);
     setHasAcceptedTerms(false);
     setCaptchaResetKey((current) => current + 1);
@@ -435,7 +428,7 @@ const PricingSection = () => {
       return;
     }
 
-    setIsSubmitting(true);
+    setPaymentPhase("creating");
 
     let effectiveCoupon = appliedCoupon;
 
@@ -443,7 +436,7 @@ const PricingSection = () => {
       const couponResult = await validateCoupon(couponCode);
 
       if (!couponResult) {
-        setIsSubmitting(false);
+        setPaymentPhase("idle");
         return;
       }
 
@@ -457,11 +450,24 @@ const PricingSection = () => {
       setAppliedCoupon(null);
     }
 
-    let paymentLink = paymentLinks[paymentProvider][selectedCategory.key];
-    const useRazorpayTestLink = paymentTestProvider === "razorpay" && razorpayTestPaymentLink?.trim();
-
-    if (useRazorpayTestLink) {
-      paymentLink = razorpayTestPaymentLink;
+    let checkoutQuote;
+    try {
+      checkoutQuote = await quoteRegistration({
+        planKey: selectedCategoryKey,
+        couponCode: effectiveCoupon?.code || null,
+        quantity: participants,
+        accommodationOptionId: accommodationOptionId || null,
+        accommodationCheckIn: accommodationOptionId ? accommodationCheckIn : null,
+        accommodationCheckOut: accommodationOptionId ? accommodationCheckOut : null,
+      });
+    } catch (quoteError) {
+      setPaymentPhase("idle");
+      toast({
+        title: "Could not confirm registration price",
+        description: quoteError instanceof Error ? quoteError.message : "Please review the accommodation and try again.",
+        variant: "destructive",
+      });
+      return;
     }
 
     const effectiveDiscount = effectiveCoupon
@@ -473,8 +479,6 @@ const PricingSection = () => {
       : 0;
     const effectiveRegistrationTotal = Math.max(subtotalPrice - effectiveDiscount, 0);
     const effectiveServiceCharge = effectiveRegistrationTotal * SERVICE_CHARGE_RATE;
-    const effectiveTotalPrice = effectiveRegistrationTotal + effectiveServiceCharge;
-    const useMockPaymentFlow = process.env.NEXT_PUBLIC_PAYMENT_DEV_MODE === "true" || (process.env.NODE_ENV !== "production" && !paymentLink);
     const discountDescription = effectiveCoupon
       ? effectiveCoupon.discountAmount && effectiveCoupon.discountAmount > 0
         ? formatUsd(effectiveCoupon.discountAmount)
@@ -488,7 +492,10 @@ const PricingSection = () => {
       `Participants: ${participants}`,
       `Discount: ${discountDescription}`,
       `Service Charge: ${formatUsd(effectiveServiceCharge)}`,
-      `Total Price: ${formatUsd(effectiveTotalPrice)}`,
+      selectedAccommodation && accommodationCheckIn && accommodationCheckOut
+        ? `Accommodation: ${selectedAccommodation.name} (${accommodationCheckIn} to ${accommodationCheckOut}, ${accommodationNights} nights) - ${formatUsd(checkoutQuote.accommodation?.total ?? 0)}`
+        : "",
+      `Total Price: ${formatUsd(checkoutQuote.amount.final)}`,
       couponCode.trim() ? `Coupon: ${couponCode.trim()}` : "",
     ]
       .filter(Boolean)
@@ -507,19 +514,21 @@ const PricingSection = () => {
         notes,
         plan_key: selectedCategory.key,
         plan_name: selectedCategory.label,
+        quantity: participants,
         payment_provider: paymentProvider,
-        amount_usd: effectiveTotalPrice,
+        amount_usd: checkoutQuote.amount.final,
         currency: "USD",
         payment_status: "pending",
-        status: paymentLink ? "payment_pending" : "initiated",
-        redirect_url: paymentLink || null,
-        redirected_at: paymentLink ? new Date().toISOString() : null,
+        status: "initiated",
+        accommodation_option_id: accommodationOptionId || null,
+        accommodation_check_in: accommodationOptionId ? accommodationCheckIn : null,
+        accommodation_check_out: accommodationOptionId ? accommodationCheckOut : null,
       })
       .select("id")
       .single();
 
     if (error || !data) {
-      setIsSubmitting(false);
+      setPaymentPhase("idle");
       toast({
         title: "Could not start registration",
         description: error?.message || "Unknown error",
@@ -528,76 +537,76 @@ const PricingSection = () => {
       return;
     }
 
-    localStorage.setItem(
-      PENDING_REGISTRATION_KEY,
-      JSON.stringify({
-        registrationId: data.id,
-        provider: paymentProvider,
-        planKey: selectedCategory.key,
-        planName: selectedCategory.label,
-        email: formValues.email.trim(),
-        couponCode: effectiveCoupon?.code,
-        createdAt: new Date().toISOString(),
-      }),
-    );
-
-    toast({
-      title: "Registration started",
-      description: `Redirecting to ${paymentProvider}.`,
-    });
-
-    if (useRazorpayTestLink && paymentLink) {
-      window.location.href = paymentLink;
-      return;
-    }
-
-    if (useMockPaymentFlow) {
-      window.location.href = buildMockPaymentRedirectUrl(data.id);
-      return;
-    }
-
-    if (paymentProvider === "stripe") {
-      try {
-        const checkoutUrl = await createStripeCheckoutSession(data.id);
-        window.location.href = checkoutUrl;
-      } catch (checkoutError) {
-        setIsSubmitting(false);
-        toast({
-          title: "Could not open Stripe checkout",
-          description: checkoutError instanceof Error ? checkoutError.message : "Please try again.",
-          variant: "destructive",
-        });
-      }
-      return;
-    }
-
-    if (paymentProvider === "paypal") {
-      try {
-        const paypalUrl = await createPayPalOrder(data.id);
-        window.location.href = paypalUrl;
-      } catch (paypalError) {
-        setIsSubmitting(false);
-        toast({
-          title: "Could not open PayPal checkout",
-          description: paypalError instanceof Error ? paypalError.message : "Please try again.",
-          variant: "destructive",
-        });
-      }
-      return;
-    }
-
-    if (paymentLink) {
-      window.location.href = appendPaymentParams(paymentLink, {
-        registration_id: data.id,
-        plan_key: selectedCategory.key,
-        provider: paymentProvider,
-        email: formValues.email.trim(),
-        amount: effectiveTotalPrice.toFixed(2),
+    // Ask the backend to create the authoritative order + gateway order. The
+    // amount is recomputed server-side; nothing here is trusted for pricing. (#3)
+    // NOTE: every checkout uses the id from the fresh insert above — we never
+    // cache/reuse a registrationId, so a receipt always reflects the details
+    // entered for this order.
+    let order;
+    try {
+      order = await createPaymentOrder(data.id, paymentProvider);
+    } catch (orderError) {
+      setPaymentPhase("idle");
+      toast({
+        title: "Could not start payment",
+        description: orderError instanceof Error ? orderError.message : "Please try again.",
+        variant: "destructive",
       });
       return;
     }
 
-    setIsSubmitting(false);
+    // Hosted checkouts (Stripe / PayPal): hand off to the provider-hosted page.
+    if (paymentProvider !== "razorpay") {
+      if (!order.checkoutUrl) {
+        setPaymentPhase("idle");
+        toast({ title: "Checkout unavailable", description: "The payment page could not be opened.", variant: "destructive" });
+        return;
+      }
+      setPaymentPhase("redirecting");
+      toast({ title: "Redirecting", description: `Opening ${paymentProvider} checkout.` });
+      window.location.href = order.checkoutUrl;
+      return;
+    }
+
+    // Razorpay: open the modal in-page, then verify the signed result server-side.
+    setPaymentPhase("opening");
+    try {
+      const result = await openRazorpayCheckout(order, { preferCard });
+
+      if (result.outcome === "dismissed") {
+        await cancelPaymentOrder(order.accessToken).catch(() => null);
+        setPaymentPhase("idle");
+        toast({ title: "Payment cancelled", description: "You closed the checkout before completing payment." });
+        return;
+      }
+
+      if (result.outcome === "failed") {
+        setPaymentPhase("idle");
+        toast({ title: "Payment failed", description: result.message, variant: "destructive" });
+        return;
+      }
+
+      setPaymentPhase("processing");
+      await verifyRazorpayPayment(result.response);
+
+      // Confirm against DB-truth status before celebrating (#21, #35).
+      const status = await getPaymentStatus(order.accessToken).catch(() => null);
+      if (status && !status.paid) {
+        setPaymentPhase("idle");
+        toast({ title: "Payment not confirmed", description: "We could not confirm your payment. Please contact support.", variant: "destructive" });
+        return;
+      }
+
+      setPaymentPhase("redirecting");
+      window.location.href = `/registration/success?provider=razorpay&order=${encodeURIComponent(order.accessToken)}`;
+    } catch (verifyError) {
+      setPaymentPhase("idle");
+      toast({
+        title: "Payment verification failed",
+        description: verifyError instanceof Error ? verifyError.message : "Please contact support if you were charged.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -698,6 +707,74 @@ const PricingSection = () => {
             </div>
           </div>
 
+          <div className="rounded-md border border-border bg-card p-5 md:p-6">
+            <h3 className="font-display text-xl font-bold text-card-foreground">Accommodation (optional)</h3>
+            <p className="mt-1 text-sm text-muted-foreground">Choose one room for this registration. The stay is charged per night and added to the same payment.</p>
+            <div className="mt-4 grid gap-4 md:grid-cols-3">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-foreground">Accommodation option</label>
+                <Select
+                  value={accommodationOptionId || "none"}
+                  onValueChange={(value) => {
+                    setAccommodationOptionId(value === "none" ? "" : value);
+                    setAccommodationQuote(null);
+                    setAccommodationCheckIn("");
+                    setAccommodationCheckOut("");
+                  }}
+                >
+                  <SelectTrigger><SelectValue placeholder="No accommodation" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No accommodation</SelectItem>
+                    {accommodationOptions.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>
+                        {option.name} — {formatUsd(Number(option.price_per_night))} / night
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedAccommodation?.description && <p className="mt-1 text-xs text-muted-foreground">{selectedAccommodation.description}</p>}
+              </div>
+              {selectedAccommodation && (
+                <>
+                  <div>
+                    <label htmlFor="accommodation-check-in" className="mb-2 block text-sm font-semibold text-foreground">Check-in</label>
+                    <Input
+                      id="accommodation-check-in"
+                      type="date"
+                      min={selectedAccommodation.available_from || undefined}
+                      max={selectedAccommodation.available_until || undefined}
+                      value={accommodationCheckIn}
+                      onChange={(event) => setAccommodationCheckIn(event.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="accommodation-check-out" className="mb-2 block text-sm font-semibold text-foreground">Check-out</label>
+                    <Input
+                      id="accommodation-check-out"
+                      type="date"
+                      min={accommodationCheckIn || selectedAccommodation.available_from || undefined}
+                      max={selectedAccommodation.available_until || undefined}
+                      value={accommodationCheckOut}
+                      onChange={(event) => setAccommodationCheckOut(event.target.value)}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+            {selectedAccommodation && (
+              <div className="mt-3 text-sm" aria-live="polite">
+                {accommodationQuoteLoading && <p className="text-muted-foreground">Checking accommodation price and dates…</p>}
+                {accommodationQuoteError && <p className="text-destructive">{accommodationQuoteError}</p>}
+                {!accommodationQuoteLoading && accommodationQuote?.accommodation && (
+                  <p className="font-semibold text-foreground">
+                    {accommodationQuote.accommodation.nights} night(s) × {formatUsd(accommodationQuote.accommodation.pricePerNight)} = {formatUsd(accommodationQuote.accommodation.total)}
+                  </p>
+                )}
+                {accommodationNights < 1 && <p className="text-muted-foreground">Select valid check-in and check-out dates to see the total.</p>}
+              </div>
+            )}
+          </div>
+
           <div className="grid items-start gap-5 lg:grid-cols-3">
               {registrationGroups.map((group) => (
                 <div
@@ -778,14 +855,16 @@ const PricingSection = () => {
               <div className="mt-6 rounded-md border border-border bg-card p-4">
                 <h3 className="mb-4 font-display text-2xl font-bold text-card-foreground">Registration Summary</h3>
                 <div className="mb-5">
-                  <label className="mb-2 block text-sm font-semibold text-foreground">Payment Gateway</label>
-                  <Select value={paymentProvider} onValueChange={(value) => setPaymentProvider(value as PaymentProvider)}>
+                  <label className="mb-2 block text-sm font-semibold text-foreground">Payment Method</label>
+                  <Select value={paymentChoice} onValueChange={(value) => setPaymentChoice(value as PaymentChoice)}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select payment gateway" />
+                      <SelectValue placeholder="Select payment method" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="stripe">Stripe</SelectItem>
+                      <SelectItem value="razorpay">Razorpay (UPI, Cards, Netbanking, Wallets)</SelectItem>
+                      <SelectItem value="card">Credit / Debit Card</SelectItem>
                       <SelectItem value="paypal">PayPal</SelectItem>
+                      <SelectItem value="stripe">Stripe</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -810,9 +889,21 @@ const PricingSection = () => {
                     <span>I. Service Charge:</span>
                     <span className="font-semibold text-foreground">{formatUsd(serviceCharge)}</span>
                   </p>
+                  {selectedAccommodation && accommodationCheckIn && accommodationCheckOut && (
+                    <p className="flex justify-between gap-4">
+                      <span>Accommodation ({accommodationNights} night(s)):</span>
+                      <span className="font-semibold text-foreground">
+                        {accommodationQuote ? formatUsd(accommodationTotal) : `${formatUsd(Number(selectedAccommodation.price_per_night) * accommodationNights)} (estimate)`}
+                      </span>
+                    </p>
+                  )}
                   <p className="flex justify-between gap-4 border-t border-border pt-3 text-lg font-bold text-foreground">
                     <span>Total Price:</span>
-                    <span>{formatUsd(totalPrice)}</span>
+                    <span>{formatUsd(
+                      accommodationOptionId && accommodationQuote
+                        ? accommodationQuote.amount.final
+                        : totalPrice + (selectedAccommodation ? Number(selectedAccommodation.price_per_night) * accommodationNights : 0),
+                    )}</span>
                   </p>
                 </div>
               </div>
@@ -877,10 +968,10 @@ const PricingSection = () => {
                 <Button
                   type="button"
                   onClick={handleProceed}
-                  disabled={isSubmitting || !isCaptchaVerified || !hasAcceptedTerms}
+                  disabled={isSubmitting || !isCaptchaVerified || !hasAcceptedTerms || accommodationQuoteLoading || Boolean(accommodationOptionId && !accommodationQuote)}
                   className="flex-1 bg-teal text-white hover:bg-teal/85"
                 >
-                  proceed to register
+                  {PHASE_LABELS[paymentPhase]}
                 </Button>
               </div>
             </div>

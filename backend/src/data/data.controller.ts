@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Headers, HttpCode, Param, Patch, Post, Query, RawBodyRequest, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { DataService } from './data.service';
 import { AdminDataGuard } from './admin-data.guard';
@@ -7,6 +7,12 @@ import { AdminDataGuard } from './admin-data.guard';
 @UseGuards(AdminDataGuard)
 export class DataController {
   constructor(private readonly dataService: DataService) {}
+
+  @Get('data/speakers/:id/profile')
+  @Header('Cache-Control', 'no-store')
+  speakerProfile(@Param('id') id: string) {
+    return this.dataService.getPublicSpeakerProfile(id);
+  }
 
   @Get('data/:table')
   list(
@@ -20,6 +26,7 @@ export class DataController {
     if (!request?.isAdmin) {
       if (table === 'site_data') parsedFilters.is_public = true;
       if (['speakers', 'media_partners', 'information_blocks'].includes(table)) parsedFilters.is_visible = true;
+      if (table === 'accommodation_options') parsedFilters.is_active = true;
     }
 
     return this.dataService.list(table, parsedFilters, this.parse(order, []));
@@ -62,45 +69,23 @@ export class DataController {
     return this.dataService.updateRegistrationPayment(body);
   }
 
-  @Post('functions/create-stripe-checkout')
-  async createStripeCheckout(@Body() body: Record<string, unknown>) {
-    return this.dataService.createStripeCheckout(body);
-  }
-
-  @Post('functions/create-paypal-order')
-  async createPayPalOrder(@Body() body: Record<string, unknown>) {
-    return this.dataService.createPayPalOrder(body);
-  }
-
-  @Post('functions/capture-paypal-order')
-  async capturePaypalOrder(@Body() body: Record<string, unknown>) {
-    return this.dataService.capturePayPalOrder(body);
-  }
-
   @Get('functions/payment-provider-status')
   getPaymentProviderStatus() {
     return this.dataService.getPaymentProviderStatus();
   }
 
   @Get('functions/receipt/:registrationId')
-  async getReceipt(@Param('registrationId') registrationId: string) {
-    return this.dataService.getReceipt(registrationId);
+  @Header('Cache-Control', 'no-store, private')
+  @Header('Referrer-Policy', 'no-referrer')
+  async getReceipt(@Param('registrationId') registrationId: string, @Query('orderId') orderId?: string) {
+    return this.dataService.getReceipt(registrationId, orderId);
   }
 
   @Post('functions/generate-receipt')
+  @Header('Cache-Control', 'no-store, private')
+  @Header('Referrer-Policy', 'no-referrer')
   async generateReceipt(@Body() body: Record<string, unknown>) {
     return this.dataService.generateReceipt(body);
-  }
-
-  @Post('webhooks/payment/:provider')
-  @HttpCode(200)
-  async handlePaymentWebhook(
-    @Param('provider') provider: string,
-    @Body() body: Record<string, unknown>,
-    @Req() request: RawBodyRequest<Request>,
-    @Headers() headers: Record<string, string | string[] | undefined>,
-  ) {
-    return this.dataService.verifyPaymentWebhook(provider, body, request.rawBody, headers);
   }
 
   private parse<T>(value: string | undefined, fallback: T): T {

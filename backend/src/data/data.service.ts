@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { randomUUID, createHmac, timingSafeEqual } from 'crypto';
 import PDFDocument from 'pdfkit';
 import { PrismaService } from '../database/prisma.service';
@@ -25,9 +25,14 @@ const TABLES: Record<string, TableConfig> = {
     defaultOrder: [{ column: 'section_key' }],
   },
   speakers: {
-    columns: ['id', 'name', 'title', 'organization', 'topic', 'bio', 'image_url', 'session_type', 'display_order', 'is_visible', 'created_at', 'updated_at'],
-    writable: ['name', 'title', 'organization', 'topic', 'bio', 'image_url', 'session_type', 'display_order', 'is_visible'],
+    columns: ['id', 'name', 'title', 'organization', 'topic', 'bio', 'image_url', 'website_url', 'linkedin_url', 'twitter_url', 'session_type', 'display_order', 'is_visible', 'created_at', 'updated_at'],
+    writable: ['name', 'title', 'organization', 'topic', 'bio', 'image_url', 'website_url', 'linkedin_url', 'twitter_url', 'session_type', 'display_order', 'is_visible'],
     defaultOrder: [{ column: 'display_order' }, { column: 'created_at' }],
+  },
+  accommodation_options: {
+    columns: ['id', 'name', 'description', 'price_per_night', 'currency', 'available_from', 'available_until', 'minimum_nights', 'maximum_nights', 'capacity', 'allow_outside_conference_dates', 'is_active', 'created_at', 'updated_at'],
+    writable: ['name', 'description', 'price_per_night', 'currency', 'available_from', 'available_until', 'minimum_nights', 'maximum_nights', 'capacity', 'allow_outside_conference_dates', 'is_active'],
+    defaultOrder: [{ column: 'name' }],
   },
   media_partners: {
     columns: ['id', 'name', 'description', 'logo_url', 'website_url', 'tier', 'display_order', 'is_visible', 'created_at', 'updated_at'],
@@ -50,8 +55,8 @@ const TABLES: Record<string, TableConfig> = {
     defaultOrder: [{ column: 'created_at', ascending: false }],
   },
   registration_intents: {
-    columns: ['id', 'full_name', 'email', 'phone', 'country', 'affiliation', 'designation', 'plan_key', 'plan_name', 'amount_usd', 'currency', 'payment_provider', 'payment_status', 'payment_reference', 'payment_session_id', 'payment_order_id', 'gateway_response', 'status', 'notes', 'redirect_url', 'redirected_at', 'completed_at', 'cancelled_at', 'created_at', 'updated_at', 'coupon_code'],
-    writable: ['full_name', 'email', 'phone', 'country', 'affiliation', 'designation', 'plan_key', 'plan_name', 'amount_usd', 'currency', 'payment_provider', 'payment_status', 'payment_reference', 'payment_session_id', 'payment_order_id', 'gateway_response', 'status', 'notes', 'redirect_url', 'redirected_at', 'completed_at', 'cancelled_at', 'coupon_code'],
+    columns: ['id', 'full_name', 'email', 'phone', 'country', 'affiliation', 'designation', 'plan_key', 'plan_name', 'quantity', 'amount_usd', 'currency', 'payment_provider', 'payment_status', 'payment_reference', 'payment_session_id', 'payment_order_id', 'gateway_response', 'status', 'notes', 'redirect_url', 'redirected_at', 'completed_at', 'cancelled_at', 'created_at', 'updated_at', 'coupon_code', 'accommodation_option_id', 'accommodation_check_in', 'accommodation_check_out'],
+    writable: ['full_name', 'email', 'phone', 'country', 'affiliation', 'designation', 'plan_key', 'plan_name', 'quantity', 'amount_usd', 'currency', 'payment_provider', 'payment_status', 'payment_reference', 'payment_session_id', 'payment_order_id', 'gateway_response', 'status', 'notes', 'redirect_url', 'redirected_at', 'completed_at', 'cancelled_at', 'coupon_code', 'accommodation_option_id', 'accommodation_check_in', 'accommodation_check_out'],
     defaultOrder: [{ column: 'created_at', ascending: false }],
   },
   coupon_codes: {
@@ -59,7 +64,31 @@ const TABLES: Record<string, TableConfig> = {
     writable: ['code', 'description', 'discount_percent', 'discount_amount', 'max_uses', 'current_uses', 'is_active', 'valid_from', 'valid_until'],
     defaultOrder: [{ column: 'created_at', ascending: false }],
   },
+  orders: {
+    columns: ['id', 'order_number', 'registration_id', 'access_token', 'provider', 'quantity', 'base_amount', 'discount_amount', 'tax_amount', 'final_amount', 'currency', 'gateway_amount', 'gateway_currency', 'coupon_code', 'accommodation_option_id', 'accommodation_name', 'accommodation_check_in', 'accommodation_check_out', 'accommodation_nights', 'accommodation_price_per_night', 'accommodation_total', 'status', 'provider_order_id', 'created_at', 'updated_at'],
+    writable: ['order_number', 'registration_id', 'access_token', 'provider', 'quantity', 'base_amount', 'discount_amount', 'tax_amount', 'final_amount', 'currency', 'gateway_amount', 'gateway_currency', 'coupon_code', 'accommodation_option_id', 'accommodation_name', 'accommodation_check_in', 'accommodation_check_out', 'accommodation_nights', 'accommodation_price_per_night', 'accommodation_total', 'status', 'provider_order_id'],
+    defaultOrder: [{ column: 'created_at', ascending: false }],
+  },
+  payments: {
+    columns: ['id', 'order_id', 'provider', 'provider_payment_id', 'provider_order_id', 'provider_signature', 'amount', 'currency', 'gateway_amount', 'gateway_currency', 'status', 'method', 'error_code', 'error_description', 'event_id', 'created_at', 'updated_at'],
+    writable: ['order_id', 'provider', 'provider_payment_id', 'provider_order_id', 'provider_signature', 'amount', 'currency', 'gateway_amount', 'gateway_currency', 'status', 'method', 'error_code', 'error_description', 'event_id'],
+    defaultOrder: [{ column: 'created_at', ascending: false }],
+  },
+  refunds: {
+    columns: ['id', 'order_id', 'provider', 'provider_refund_id', 'provider_payment_id', 'amount_minor', 'currency', 'status', 'event_id', 'created_at', 'updated_at'],
+    writable: ['order_id', 'provider', 'provider_refund_id', 'provider_payment_id', 'amount_minor', 'currency', 'status', 'event_id'],
+    defaultOrder: [{ column: 'created_at', ascending: false }],
+  },
 };
+
+const CONFERENCE_TIME_KEYS = new Set([
+  'conference_start_datetime_utc',
+  'conference_end_datetime_utc',
+]);
+
+// Registration adds a fixed service charge on top of the plan/discounted price.
+export const SERVICE_CHARGE_RATE = 0.05;
+const ACCOMMODATION_HOLD_MINUTES = Number(process.env.ORDER_STALE_MINUTES || 30);
 
 const DEFAULT_PRICES: Record<string, Record<string, number>> = {
   speaker: { pre: 109, early: 149, mid: 179, onspot: 199 },
@@ -86,22 +115,108 @@ export class DataService {
       this.buildOrder(config, sorts),
     ].filter(Boolean).join(' ');
 
-    return (this.prisma as any).$queryRawUnsafe(sql, ...where.values);
+    return this.jsonSafe(await (this.prisma as any).$queryRawUnsafe(sql, ...where.values));
+  }
+
+  async getPublicSpeakerProfile(id: string) {
+    const speakerConfig = this.getTable('speakers');
+    const speakers = await (this.prisma as any).$queryRawUnsafe(
+      `SELECT ${speakerConfig.columns.map((column) => `\`${column}\``).join(', ')} FROM \`speakers\` WHERE \`id\` = ? AND \`is_visible\` = TRUE LIMIT 1`,
+      id,
+    );
+    const speaker = this.jsonSafe(speakers)[0];
+    if (!speaker) throw new NotFoundException('Speaker not found');
+
+    const sessions = await (this.prisma as any).$queryRawUnsafe(
+      'SELECT s.`id`, s.`title`, s.`description`, s.`startTime`, s.`endTime`, s.`room` FROM `_SessionToSpeaker` AS link INNER JOIN `sessions` AS s ON s.`id` = link.`A` WHERE link.`B` = ? ORDER BY s.`startTime` ASC',
+      id,
+    );
+
+    return { speaker, sessions: this.jsonSafe(sessions) };
+  }
+
+  private async validateConferenceTimes(changes: Array<{ data_key?: unknown; value?: unknown }>) {
+    const persistedRows = await Promise.all(
+      [...CONFERENCE_TIME_KEYS].map(async (dataKey) => {
+        const [row] = await this.list('site_data', { data_key: dataKey }) as Array<{ data_key: string; value: string | null }>;
+        return row;
+      }),
+    );
+    const values = new Map<string, string | null>(
+      persistedRows.filter(Boolean).map((row) => [row.data_key, row.value]),
+    );
+
+    for (const change of changes) {
+      const key = String(change.data_key ?? '');
+      if (CONFERENCE_TIME_KEYS.has(key)) {
+        values.set(key, change.value == null || change.value === '' ? null : String(change.value));
+      }
+    }
+
+    for (const key of CONFERENCE_TIME_KEYS) {
+      const value = values.get(key);
+      if (value == null || value === '') continue;
+      const parsed = new Date(value);
+      if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) ||
+          Number.isNaN(parsed.getTime()) || parsed.toISOString() !== value) {
+        throw new BadRequestException(`${key} must be a valid UTC ISO datetime`);
+      }
+    }
+
+    const start = values.get('conference_start_datetime_utc');
+    const end = values.get('conference_end_datetime_utc');
+    if (start && end && Date.parse(end) < Date.parse(start)) {
+      throw new BadRequestException('Conference end datetime must not precede its start datetime');
+    }
+  }
+
+  // The mariadb adapter returns BIGINT columns (e.g. orders.gateway_amount, the
+  // Razorpay charge in paise) as native BigInt, and DECIMAL columns (amounts
+  // like final_amount / amount_usd) as Decimal.js instances. JSON.stringify
+  // turns a Decimal into `{s,e,d}` and throws on a BigInt, so an unconverted row
+  // either 500s the response or hands the client an unusable amount. Deep-
+  // convert both to plain numbers (integer minor-unit amounts stay well within
+  // MAX_SAFE_INTEGER) so query results are always JSON-safe and numeric. Date
+  // columns are passed through untouched — Date.toJSON already yields an ISO
+  // string, and rebuilding one field-by-field like a plain object would flatten
+  // it to `{}`.
+  private jsonSafe<T>(value: T): T {
+    if (typeof value === 'bigint') return Number(value) as unknown as T;
+    if (Array.isArray(value)) return value.map((item) => this.jsonSafe(item)) as unknown as T;
+    if (value instanceof Date) return value as unknown as T;
+    if (value && typeof value === 'object') {
+      const decimalLike = value as { s?: unknown; e?: unknown; d?: unknown; toString?: () => string };
+      if (typeof decimalLike.s === 'number' && typeof decimalLike.e === 'number' && Array.isArray(decimalLike.d)) {
+        return Number(decimalLike.toString?.() ?? value) as unknown as T;
+      }
+      const result: Record<string, unknown> = {};
+      for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+        result[key] = this.jsonSafe(item);
+      }
+      return result as unknown as T;
+    }
+    return value;
   }
 
   async insert(table: string, payload: Record<string, unknown> | Record<string, unknown>[]) {
     const rows = Array.isArray(payload) ? payload : [payload];
+    const preparedRows = rows.map((row) => this.pickWritable(table, row, true));
+    if (table === 'site_data') {
+      await this.validateConferenceTimes(preparedRows);
+    }
     const created = [];
 
-    for (const row of rows) {
-      const data = this.pickWritable(table, row, true);
+    for (const data of preparedRows) {
       if (!data.id) data.id = randomUUID();
       const columns = Object.keys(data);
       if (!columns.length) throw new BadRequestException('No writable fields provided');
 
       const placeholders = columns.map(() => '?').join(', ');
       const sql = `INSERT INTO \`${table}\` (${columns.map((column) => `\`${column}\``).join(', ')}) VALUES (${placeholders})`;
-      await (this.prisma as any).$executeRawUnsafe(sql, ...columns.map((column) => this.normalizeValue(data[column])));
+      await (this.prisma as any).$executeRawUnsafe(
+        sql,
+        ...columns.map((column) => this.normalizeValue(data[column], table === 'site_data' && column === 'value')),
+      );
       const [inserted] = await this.list(table, { id: data.id }) as any[];
       created.push(inserted);
     }
@@ -109,38 +224,216 @@ export class DataService {
     return Array.isArray(payload) ? created : created[0];
   }
 
+  async quoteAccommodation(optionId: string, checkIn: unknown, checkOut: unknown) {
+    const options = await this.list('accommodation_options', { id: optionId, is_active: true }) as Record<string, any>[];
+    const option = options[0];
+    if (!option) throw new BadRequestException('The selected accommodation is unavailable');
+    return this.buildAccommodationQuote(option, checkIn, checkOut, {
+      $queryRawUnsafe: (...args: any[]) => (this.prisma as any).$queryRawUnsafe(...args),
+    });
+  }
+
+  async createOrderWithAccommodation(
+    order: Record<string, unknown>,
+    selection: { optionId: string; checkIn: unknown; checkOut: unknown; expectedPricePerNight: number },
+  ) {
+    const config = this.getTable('orders');
+    return (this.prisma as any).$transaction(async (transaction: any) => {
+      const optionColumns = this.getTable('accommodation_options').columns;
+      const optionRows = await transaction.$queryRawUnsafe(
+        `SELECT ${optionColumns.map((column) => `\`${column}\``).join(', ')} FROM \`accommodation_options\` WHERE \`id\` = ? FOR UPDATE`,
+        selection.optionId,
+      );
+      const option = this.jsonSafe(optionRows)[0] as Record<string, any> | undefined;
+      if (!option || !this.isTruthy(option.is_active)) {
+        throw new BadRequestException('The selected accommodation is no longer available');
+      }
+      const quote = await this.buildAccommodationQuote(option, selection.checkIn, selection.checkOut, transaction);
+      if (quote.pricePerNight !== selection.expectedPricePerNight) {
+        throw new ConflictException('Accommodation pricing changed. Please review your updated registration total.');
+      }
+
+      if (option.capacity != null) {
+        const rows = await transaction.$queryRawUnsafe(
+          `SELECT COUNT(*) AS booked FROM \`orders\`
+           WHERE \`accommodation_option_id\` = ?
+             AND \`accommodation_check_in\` < ?
+             AND \`accommodation_check_out\` > ?
+             AND (
+               \`status\` = 'PAID'
+               OR (\`status\` IN ('CREATED', 'PENDING') AND \`updated_at\` >= DATE_SUB(UTC_TIMESTAMP(3), INTERVAL ? MINUTE))
+             )`,
+          selection.optionId,
+          quote.checkOut,
+          quote.checkIn,
+          ACCOMMODATION_HOLD_MINUTES,
+        );
+        const booked = Number(rows[0]?.booked ?? 0);
+        if (booked >= Number(option.capacity)) {
+          throw new ConflictException('No rooms remain for the selected accommodation dates. Choose different dates or another option.');
+        }
+      }
+
+      const data = this.pickWritable('orders', {
+        ...order,
+        accommodation_option_id: option.id,
+        accommodation_name: option.name,
+        accommodation_check_in: quote.checkIn,
+        accommodation_check_out: quote.checkOut,
+        accommodation_nights: quote.nights,
+        accommodation_price_per_night: quote.pricePerNight,
+        accommodation_total: quote.total,
+      }, true);
+      if (!data.id) data.id = randomUUID();
+      const columns = Object.keys(data);
+      const sql = `INSERT INTO \`orders\` (${columns.map((column) => `\`${column}\``).join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`;
+      await transaction.$executeRawUnsafe(
+        sql,
+        ...columns.map((column) => this.normalizeValue(data[column])),
+      );
+      const [saved] = await transaction.$queryRawUnsafe(
+        `SELECT ${config.columns.map((column) => `\`${column}\``).join(', ')} FROM \`orders\` WHERE \`id\` = ?`,
+        data.id,
+      );
+      return this.jsonSafe(saved);
+    });
+  }
+
+  private async buildAccommodationQuote(
+    option: Record<string, any>,
+    checkInValue: unknown,
+    checkOutValue: unknown,
+    queryable: { $queryRawUnsafe: (...args: any[]) => Promise<any> },
+  ) {
+    const checkIn = this.parseDateOnly(checkInValue, 'Check-in');
+    const checkOut = this.parseDateOnly(checkOutValue, 'Check-out');
+    const start = Date.parse(`${checkIn}T00:00:00.000Z`);
+    const end = Date.parse(`${checkOut}T00:00:00.000Z`);
+    const nights = (end - start) / 86_400_000;
+    if (!Number.isInteger(nights) || nights < 1) throw new BadRequestException('Check-out must be after check-in');
+
+    const minimum = Number(option.minimum_nights ?? 1);
+    const maximum = option.maximum_nights == null ? null : Number(option.maximum_nights);
+    if (!Number.isInteger(minimum) || minimum < 1 || (maximum != null && (!Number.isInteger(maximum) || maximum < minimum))) {
+      throw new ServiceUnavailableException('Accommodation stay limits are invalid');
+    }
+    if (nights < minimum || (maximum != null && nights > maximum)) {
+      throw new BadRequestException(`Stay must be between ${minimum} and ${maximum ?? 'unlimited'} nights`);
+    }
+
+    const availableFrom = option.available_from == null ? null : this.parseDateOnly(option.available_from, 'Accommodation availability start');
+    const availableUntil = option.available_until == null ? null : this.parseDateOnly(option.available_until, 'Accommodation availability end');
+    if (availableFrom && checkIn < availableFrom) throw new BadRequestException('Check-in is before accommodation availability');
+    if (availableUntil && checkOut > availableUntil) throw new BadRequestException('Check-out is after accommodation availability');
+    if (availableFrom && availableUntil && availableFrom >= availableUntil) {
+      throw new ServiceUnavailableException('Accommodation availability dates are invalid');
+    }
+
+    if (!this.isTruthy(option.allow_outside_conference_dates)) {
+      const settings = await queryable.$queryRawUnsafe(
+        'SELECT `data_key`, `value` FROM `site_data` WHERE `data_key` IN (?, ?)',
+        'conference_start_datetime_utc',
+        'conference_end_datetime_utc',
+      ) as Array<{ data_key: string; value: string | null }>;
+      const byKey = new Map(settings.map((row) => [row.data_key, row.value]));
+      const conferenceStart = byKey.get('conference_start_datetime_utc');
+      const conferenceEnd = byKey.get('conference_end_datetime_utc');
+      if (!conferenceStart || !conferenceEnd) {
+        throw new ServiceUnavailableException('Conference UTC dates must be configured before accommodation can be booked');
+      }
+      const startDate = new Date(conferenceStart);
+      const endDate = new Date(conferenceEnd);
+      if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || endDate < startDate) {
+        throw new ServiceUnavailableException('Configured conference dates are invalid');
+      }
+      const conferenceFirstNight = startDate.toISOString().slice(0, 10);
+      const lastConferenceDate = endDate.toISOString().slice(0, 10);
+      const checkoutLimit = new Date(`${lastConferenceDate}T00:00:00.000Z`);
+      checkoutLimit.setUTCDate(checkoutLimit.getUTCDate() + 1);
+      if (checkIn < conferenceFirstNight || checkOut > checkoutLimit.toISOString().slice(0, 10)) {
+        throw new BadRequestException('Accommodation dates must fall within the configured conference period');
+      }
+    }
+
+    const currency = String(option.currency || 'USD').toUpperCase();
+    if (currency !== 'USD') throw new ServiceUnavailableException('Accommodation pricing must use USD to match conference registration');
+    const pricePerNight = Number(option.price_per_night);
+    if (!Number.isFinite(pricePerNight) || pricePerNight <= 0) {
+      throw new ServiceUnavailableException('Accommodation pricing is invalid');
+    }
+    if (option.capacity != null && (!Number.isInteger(Number(option.capacity)) || Number(option.capacity) < 1)) {
+      throw new ServiceUnavailableException('Accommodation capacity is invalid');
+    }
+
+    return {
+      optionId: String(option.id),
+      name: String(option.name),
+      checkIn,
+      checkOut,
+      nights,
+      pricePerNight: Math.round(pricePerNight * 100) / 100,
+      total: Math.round(pricePerNight * nights * 100) / 100,
+      currency,
+    };
+  }
+
+  private parseDateOnly(value: unknown, label: string) {
+    const date = value instanceof Date ? value.toISOString().slice(0, 10) : String(value ?? '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new BadRequestException(`${label} must be a valid calendar date`);
+    const parsed = new Date(`${date}T00:00:00.000Z`);
+    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
+      throw new BadRequestException(`${label} must be a valid calendar date`);
+    }
+    return date;
+  }
+
+  private isTruthy(value: unknown) {
+    return value === true || value === 1 || value === '1' || value === 'true';
+  }
+
   async createPublicRegistration(payload: Record<string, unknown>) {
     const fullName = String(payload.full_name || '').trim();
     const email = String(payload.email || '').trim().toLowerCase();
+    const affiliation = String(payload.affiliation || '').trim();
+    const country = String(payload.country || '').trim();
+    const phone = String(payload.phone || '').trim();
     const planKey = String(payload.plan_key || '').trim().toLowerCase();
     const provider = String(payload.payment_provider || 'stripe').toLowerCase();
-    if (!fullName || !email || !/^\S+@\S+\.\S+$/.test(email)) throw new BadRequestException('A valid name and email are required');
-    if (!['stripe', 'paypal'].includes(provider)) throw new BadRequestException('Unsupported payment provider');
-
-    const plan = await this.resolveRegistrationPlan(planKey);
-    let amount = plan.amount;
-    let couponCode: string | null = null;
-    const requestedCoupon = String(payload.coupon_code || '').trim();
-    if (requestedCoupon) {
-      const coupon = await this.validateCoupon(requestedCoupon, amount);
-      if (!coupon.valid) throw new BadRequestException(coupon.message || 'Invalid coupon');
-      amount = Number(coupon.final_amount);
-      couponCode = String(coupon.code);
+    const quantity = Number(payload.quantity ?? 1);
+    const accommodationOptionId = String(payload.accommodation_option_id ?? '').trim();
+    const accommodationCheckIn = payload.accommodation_check_in ?? null;
+    const accommodationCheckOut = payload.accommodation_check_out ?? null;
+    if (!fullName || fullName.length > 200 || !email || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+      throw new BadRequestException('A valid name and email are required');
     }
+    if (!affiliation || affiliation.length > 200 || !country || country.length > 100) {
+      throw new BadRequestException('Organization and country are required');
+    }
+    if (phone.length > 32) throw new BadRequestException('Phone number is too long');
+    if (!['stripe', 'paypal', 'razorpay'].includes(provider)) throw new BadRequestException('Unsupported payment provider');
 
-    const total = Math.round(amount * 1.05 * 100) / 100;
+    const pricing = await this.computeRegistrationAmount(planKey, String(payload.coupon_code || '').trim(), quantity);
+    if (accommodationOptionId) {
+      await this.quoteAccommodation(accommodationOptionId, accommodationCheckIn, accommodationCheckOut);
+    } else if (accommodationCheckIn || accommodationCheckOut) {
+      throw new BadRequestException('Select an accommodation option before providing stay dates');
+    }
     return this.insert('registration_intents', {
       full_name: fullName,
       email,
-      phone: String(payload.phone || '').trim() || 'Not provided',
-      affiliation: String(payload.affiliation || '').trim(),
-      country: String(payload.country || '').trim(),
-      designation: String(payload.designation || plan.label).trim(),
+      phone: phone || 'Not provided',
+      affiliation,
+      country,
+      designation: String(payload.designation || pricing.planLabel).trim(),
       plan_key: planKey,
-      plan_name: plan.label,
-      amount_usd: total,
+      plan_name: pricing.planLabel,
+      quantity,
+      amount_usd: pricing.finalAmount,
       currency: 'USD',
-      coupon_code: couponCode,
+      coupon_code: pricing.couponCode,
+      accommodation_option_id: accommodationOptionId || null,
+      accommodation_check_in: accommodationOptionId ? this.parseDateOnly(accommodationCheckIn, 'Check-in') : null,
+      accommodation_check_out: accommodationOptionId ? this.parseDateOnly(accommodationCheckOut, 'Check-out') : null,
       payment_provider: provider,
       payment_status: 'pending',
       status: 'initiated',
@@ -172,10 +465,44 @@ export class DataService {
     if (!config.columns.includes(conflictColumn)) throw new BadRequestException(`Unknown conflict column: ${conflictColumn}`);
 
     const rows = Array.isArray(payload) ? payload : [payload];
+    const preparedRows = rows.map((row) => this.pickWritable(table, row, true));
+    if (table === 'site_data') {
+      await this.validateConferenceTimes(preparedRows);
+      return (this.prisma as any).$transaction(async (transaction: any) => {
+        const savedRows = [];
+        for (const data of preparedRows) {
+          if (!data.id) data.id = randomUUID();
+          const columns = Object.keys(data);
+          if (!columns.length) throw new BadRequestException('No writable fields provided');
+          if (data[conflictColumn] === undefined) throw new BadRequestException(`Conflict column is required: ${conflictColumn}`);
+
+          const updateColumns = columns.filter((column) => column !== 'id' && column !== conflictColumn);
+          const placeholders = columns.map(() => '?').join(', ');
+          const updateClause = updateColumns.length
+            ? updateColumns.map((column) => `\`${column}\` = VALUES(\`${column}\`)`).join(', ')
+            : `\`${conflictColumn}\` = VALUES(\`${conflictColumn}\`)`;
+          const sql = [
+            `INSERT INTO \`${table}\` (${columns.map((column) => `\`${column}\``).join(', ')}) VALUES (${placeholders})`,
+            `ON DUPLICATE KEY UPDATE ${updateClause}`,
+          ].join(' ');
+
+          await transaction.$executeRawUnsafe(
+            sql,
+            ...columns.map((column) => this.normalizeValue(data[column], column === 'value')),
+          );
+          const selected = await transaction.$queryRawUnsafe(
+            `SELECT ${config.columns.map((column) => `\`${column}\``).join(', ')} FROM \`${table}\` WHERE \`${conflictColumn}\` = ?`,
+            data[conflictColumn],
+          );
+          savedRows.push(this.jsonSafe(selected)[0] ?? null);
+        }
+
+        return Array.isArray(payload) ? savedRows : savedRows[0];
+      });
+    }
     const saved = [];
 
-    for (const row of rows) {
-      const data = this.pickWritable(table, row, true);
+    for (const data of preparedRows) {
       if (!data.id) data.id = randomUUID();
       const columns = Object.keys(data);
       if (!columns.length) throw new BadRequestException('No writable fields provided');
@@ -191,7 +518,10 @@ export class DataService {
         `ON DUPLICATE KEY UPDATE ${updateClause}`,
       ].join(' ');
 
-      await (this.prisma as any).$executeRawUnsafe(sql, ...columns.map((column) => this.normalizeValue(data[column])));
+      await (this.prisma as any).$executeRawUnsafe(
+        sql,
+        ...columns.map((column) => this.normalizeValue(data[column], table === 'site_data' && column === 'value')),
+      );
       const [latest] = await this.list(table, { [conflictColumn]: data[conflictColumn] }) as any[];
       saved.push(latest);
     }
@@ -203,19 +533,145 @@ export class DataService {
     const data = this.pickWritable(table, payload);
     const columns = Object.keys(data);
     if (!columns.length) throw new BadRequestException('No writable fields provided');
+    if (table === 'site_data') {
+      const [existing] = await this.list('site_data', { id }) as Array<{ data_key: string; value: string | null }>;
+      const key = String(data.data_key ?? existing?.data_key ?? '');
+      if (CONFERENCE_TIME_KEYS.has(key)) {
+        await this.validateConferenceTimes([{
+          data_key: key,
+          value: data.value === undefined ? existing?.value : data.value,
+        }]);
+      }
+    }
 
     const setClause = columns.map((column) => `\`${column}\` = ?`).join(', ');
     await (this.prisma as any).$executeRawUnsafe(
       `UPDATE \`${table}\` SET ${setClause} WHERE \`id\` = ?`,
-      ...columns.map((column) => this.normalizeValue(data[column])),
+      ...columns.map((column) => this.normalizeValue(data[column], table === 'site_data' && column === 'value')),
       id,
     );
     const rows = await this.list(table, { id });
     return (rows as any[])[0] ?? null;
   }
 
+  async transitionOrderStatus(orderId: string, fromStatuses: string[], toStatus: string): Promise<boolean> {
+    const expected = [...new Set(fromStatuses.map((status) => status.toUpperCase()))];
+    if (!expected.length) return false;
+    const placeholders = expected.map(() => '?').join(', ');
+    const affected = await (this.prisma as any).$executeRawUnsafe(
+      `UPDATE orders SET status = ? WHERE id = ? AND status IN (${placeholders})`,
+      toStatus,
+      orderId,
+      ...expected,
+    );
+    return Number(affected) === 1;
+  }
+
+  async claimRegistrationCheckout(registrationId: string): Promise<boolean> {
+    const affected = await (this.prisma as any).$executeRawUnsafe(
+      "UPDATE registration_intents SET status = 'checkout_started' WHERE id = ? AND status = 'initiated' AND LOWER(payment_status) = 'pending'",
+      registrationId,
+    );
+    return Number(affected) === 1;
+  }
+
+  async releaseRegistrationCheckoutClaim(registrationId: string) {
+    await (this.prisma as any).$executeRawUnsafe(
+      "UPDATE registration_intents SET status = 'initiated' WHERE id = ? AND status = 'checkout_started' AND LOWER(payment_status) = 'pending'",
+      registrationId,
+    );
+  }
+
+  async attachProviderOrder(orderId: string, providerOrderId: string) {
+    await (this.prisma as any).$executeRawUnsafe(
+      "UPDATE `orders` SET `provider_order_id` = ?, `status` = CASE WHEN `status` = 'CREATED' THEN 'PENDING' ELSE `status` END WHERE `id` = ?",
+      providerOrderId,
+      orderId,
+    );
+    const rows = (await this.list('orders', { id: orderId })) as Record<string, any>[];
+    return rows[0] ?? null;
+  }
+
+  async claimOrderRefund(orderId: string): Promise<boolean> {
+    const affected = await (this.prisma as any).$executeRawUnsafe(
+      "UPDATE `orders` SET `status` = 'REFUND_PENDING' WHERE `id` = ? AND `status` = 'PAID'",
+      orderId,
+    );
+    return Number(affected) === 1;
+  }
+
+  async releaseOrderRefundClaim(orderId: string) {
+    await (this.prisma as any).$executeRawUnsafe(
+      "UPDATE `orders` SET `status` = 'PAID' WHERE `id` = ? AND `status` = 'REFUND_PENDING'",
+      orderId,
+    );
+  }
+
+  async recordPaymentAudit(event: {
+    orderId: string;
+    actorUserId?: string | null;
+    provider: string;
+    action: string;
+    previousStatus?: string | null;
+    newStatus?: string | null;
+    amountMinor?: number | null;
+    currency?: string | null;
+    providerReference?: string | null;
+  }) {
+    await (this.prisma as any).$executeRawUnsafe(
+      'INSERT INTO `payment_audit_logs` (`id`, `order_id`, `actor_user_id`, `provider`, `action`, `previous_status`, `new_status`, `amount_minor`, `currency`, `provider_reference`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      randomUUID(),
+      event.orderId,
+      event.actorUserId || null,
+      event.provider,
+      event.action,
+      event.previousStatus || null,
+      event.newStatus || null,
+      event.amountMinor ?? null,
+      event.currency || null,
+      event.providerReference || null,
+    );
+  }
+
+  async listPaymentAudit(orderId: string) {
+    const rows = await (this.prisma as any).$queryRawUnsafe(
+      'SELECT `id`, `order_id`, `actor_user_id`, `provider`, `action`, `previous_status`, `new_status`, `amount_minor`, `currency`, `provider_reference`, `created_at` FROM `payment_audit_logs` WHERE `order_id` = ? ORDER BY `created_at` DESC',
+      orderId,
+    );
+    return this.jsonSafe(rows);
+  }
+
   async delete(table: string, id: string) {
     this.getTable(table);
+
+    // Deleting a registration or an order must not leave orphaned child rows.
+    // registration_intents -> orders -> payments is cleared bottom-up inside a
+    // single transaction so a failure rolls the whole delete back. (#10)
+    if (table === 'registration_intents') {
+      await (this.prisma as any).$transaction(async (tx: any) => {
+        const orderRows = (await tx.$queryRawUnsafe(
+          'SELECT `id` FROM `orders` WHERE `registration_id` = ?',
+          id,
+        )) as Array<{ id: string }>;
+        const orderIds = orderRows.map((row) => row.id);
+        if (orderIds.length) {
+          const placeholders = orderIds.map(() => '?').join(', ');
+          await tx.$executeRawUnsafe(`DELETE FROM \`payments\` WHERE \`order_id\` IN (${placeholders})`, ...orderIds);
+          await tx.$executeRawUnsafe(`DELETE FROM \`orders\` WHERE \`id\` IN (${placeholders})`, ...orderIds);
+        }
+        await tx.$executeRawUnsafe('DELETE FROM `registration_intents` WHERE `id` = ?', id);
+      });
+      return { id };
+    }
+
+    if (table === 'orders') {
+      await (this.prisma as any).$transaction(async (tx: any) => {
+        await tx.$executeRawUnsafe('DELETE FROM `payments` WHERE `order_id` = ?', id);
+        await tx.$executeRawUnsafe('DELETE FROM `orders` WHERE `id` = ?', id);
+      });
+      return { id };
+    }
+
     if (table === 'abstract_submissions') {
       const rows = await this.list(table, { id }) as Array<Record<string, unknown>>;
       const submission = rows[0];
@@ -293,7 +749,8 @@ export class DataService {
 
     const percent = Number(coupon.discount_percent ?? 0);
     const amount = Number(coupon.discount_amount ?? 0);
-    const discount = amount || Math.round((Number(amountUsd) * percent) / 100);
+    const discount = amount || Math.round((Number(amountUsd) * percent) / 100 * 100) / 100;
+    const finalAmount = Math.max(0, Number(amountUsd) - discount);
     return {
       valid: true,
       coupon_id: coupon.id,
@@ -301,8 +758,61 @@ export class DataService {
       coupon,
       discount_percent: coupon.discount_percent,
       discount_amount: discount,
-      final_amount: Math.max(0, Number(amountUsd) - discount),
+      final_amount: Math.round(finalAmount * 100) / 100,
     };
+  }
+
+  // Consume one use of a coupon. Coupon usage is reserved atomically at order
+  // creation (see reserveCoupon) and released on failure (releaseCoupon), so
+  // there is no separate redeem-at-settlement step.
+
+  // Reserve one use of a coupon at the moment an order is created, rather than
+  // waiting for settlement. This is what actually enforces a usage cap: without
+  // it, several orders created back-to-back (a user paying repeatedly "in a
+  // single timestamp") would each pass validation while current_uses is still
+  // below max_uses, and every one of them would get the discount. The atomic
+  // conditional increment only succeeds while the limit has room, so the second
+  // order for a 1-use coupon is refused here. Returns true when a use was taken.
+  // An unlimited coupon (max_uses NULL) always succeeds. `releaseCoupon` gives
+  // the use back if that order later fails, so a failed attempt never burns it.
+  async reserveCoupon(code?: string | null): Promise<boolean> {
+    const trimmed = String(code || '').trim().toUpperCase();
+    if (!trimmed) return true;
+    const affected = (await (this.prisma as any).$executeRawUnsafe(
+      'UPDATE `coupon_codes` SET `current_uses` = COALESCE(`current_uses`, 0) + 1 ' +
+        'WHERE `code` = ? AND (`max_uses` IS NULL OR COALESCE(`current_uses`, 0) < `max_uses`)',
+      trimmed,
+    )) as number;
+    return Number(affected) > 0;
+  }
+
+  // Give back a use reserved by `reserveCoupon` when its order never gets paid
+  // (payment failed, or the gateway order could not be created). Floors at zero
+  // so it can never drive the counter negative.
+  async releaseCoupon(code?: string | null) {
+    const trimmed = String(code || '').trim().toUpperCase();
+    if (!trimmed) return;
+    await (this.prisma as any).$executeRawUnsafe(
+      'UPDATE `coupon_codes` SET `current_uses` = GREATEST(COALESCE(`current_uses`, 0) - 1, 0) ' +
+        'WHERE `code` = ?',
+      trimmed,
+    );
+  }
+
+  // Orders that were started but never reached a terminal state (CREATED /
+  // PENDING) and are older than `olderThanMinutes`. Used by the stale-order
+  // sweeper to reclaim coupon uses that a buyer reserved and then abandoned —
+  // without this, a closed checkout tab would hold a capped coupon's use
+  // forever. Returns the raw order rows so the caller can release each coupon
+  // and mark the order CANCELLED.
+  async findStaleOpenOrders(olderThanMinutes: number): Promise<Record<string, any>[]> {
+    const minutes = Math.max(1, Math.floor(olderThanMinutes));
+    const rows = (await (this.prisma as any).$queryRawUnsafe(
+      "SELECT * FROM `orders` WHERE `status` IN ('CREATED','PENDING') " +
+        'AND `created_at` < (NOW() - INTERVAL ? MINUTE)',
+      minutes,
+    )) as Record<string, any>[];
+    return Array.isArray(rows) ? rows : [];
   }
 
   async updateRegistrationPayment(payload: Record<string, unknown>) {
@@ -325,13 +835,72 @@ export class DataService {
       dataToUpdate.completed_at = new Date().toISOString();
     }
 
-    const updated = await this.update('registration_intents', id, dataToUpdate);
-
-    if (nextPaymentStatus === 'paid') {
-      await this.sendPaymentSuccessNotification(id, updated as Record<string, unknown>);
+    let updated: Record<string, unknown> | null;
+    if (nextPaymentStatus.toLowerCase() === 'paid') {
+      const writable = this.pickWritable('registration_intents', dataToUpdate);
+      const columns = Object.keys(writable);
+      const setClause = columns.map((column) => `${column} = ?`).join(', ');
+      const affected = await (this.prisma as any).$transaction(async (tx: any) => {
+        const changed = await tx.$executeRawUnsafe(
+          `UPDATE registration_intents SET ${setClause} WHERE id = ? AND LOWER(payment_status) <> 'paid'`,
+          ...columns.map((column) => this.normalizeValue(writable[column])),
+          id,
+        );
+        if (Number(changed) === 1) {
+          await tx.$executeRawUnsafe(
+            "INSERT INTO payment_notifications (id, registration_id, type, status, attempts, next_attempt_at) VALUES (?, ?, 'PAYMENT_CONFIRMED', 'PENDING', 0, NOW(3)) ON DUPLICATE KEY UPDATE registration_id = VALUES(registration_id)",
+            randomUUID(),
+            id,
+          );
+        }
+        return Number(changed);
+      });
+      const rows = (await this.list('registration_intents', { id })) as Record<string, unknown>[];
+      updated = rows[0] ?? null;
+      if (Number(affected) === 1) await this.deliverPaymentConfirmation(id, updated);
+    } else {
+      updated = await this.update('registration_intents', id, dataToUpdate) as Record<string, unknown> | null;
     }
 
     return updated;
+  }
+
+  async deliverPaymentConfirmation(registrationId: string, registration?: Record<string, unknown> | null) {
+    const claimed = await (this.prisma as any).$executeRawUnsafe(
+      "UPDATE payment_notifications SET status = 'SENDING', attempts = attempts + 1, updated_at = NOW(3) WHERE registration_id = ? AND type = 'PAYMENT_CONFIRMED' AND status IN ('PENDING', 'FAILED') AND next_attempt_at <= NOW(3)",
+      registrationId,
+    );
+    if (Number(claimed) !== 1) return { skipped: true };
+
+    try {
+      const result = await this.sendPaymentSuccessNotification(registrationId, registration ?? null);
+      await (this.prisma as any).$executeRawUnsafe(
+        "UPDATE payment_notifications SET status = 'SENT', sent_at = NOW(3), last_error = NULL, updated_at = NOW(3) WHERE registration_id = ? AND type = 'PAYMENT_CONFIRMED' AND status = 'SENDING'",
+        registrationId,
+      );
+      return result;
+    } catch (error) {
+      const message = (error instanceof Error ? error.message : String(error)).slice(0, 2000);
+      await (this.prisma as any).$executeRawUnsafe(
+        "UPDATE payment_notifications SET status = 'FAILED', last_error = ?, next_attempt_at = DATE_ADD(NOW(3), INTERVAL LEAST(POW(2, attempts), 60) MINUTE), updated_at = NOW(3) WHERE registration_id = ? AND type = 'PAYMENT_CONFIRMED' AND status = 'SENDING'",
+        message,
+        registrationId,
+      );
+      return { success: false, retryable: true };
+    }
+  }
+
+  async retryFailedPaymentNotifications(limit = 50) {
+    const batchSize = Math.min(Math.max(Math.floor(limit), 1), 100);
+    await (this.prisma as any).$executeRawUnsafe(
+      "UPDATE payment_notifications SET status = 'FAILED' WHERE status = 'SENDING' AND updated_at < DATE_SUB(NOW(3), INTERVAL 10 MINUTE)",
+    );
+    const rows = (await (this.prisma as any).$queryRawUnsafe(
+      "SELECT registration_id FROM payment_notifications WHERE status IN ('PENDING', 'FAILED') AND next_attempt_at <= NOW(3) ORDER BY next_attempt_at ASC LIMIT ?",
+      batchSize,
+    )) as Array<{ registration_id: string }>;
+    for (const row of rows) await this.deliverPaymentConfirmation(row.registration_id);
+    return { attempted: rows.length };
   }
 
   async verifyPaymentWebhook(
@@ -398,21 +967,28 @@ export class DataService {
   }
 
   async getPaymentProviderStatus() {
+    const production = String(process.env.NODE_ENV).toLowerCase() === 'production';
+    const liveModeReady = !production || process.env.PAYMENT_MODE === 'production';
+    const httpsReady = !production || String(process.env.FRONTEND_URL || '').split(',').every((url) => url.trim().startsWith('https://'));
+    const razorpayRateReady = !production || (Number.isFinite(Number(process.env.RAZORPAY_USD_TO_INR)) && Number(process.env.RAZORPAY_USD_TO_INR) > 0);
+    const razorpayKeyId = String(process.env.RAZORPAY_KEY_ID || '');
+    const razorpayKeyModeReady = (razorpayKeyId.startsWith('rzp_live_') && production && process.env.PAYMENT_MODE === 'production') ||
+      (razorpayKeyId.startsWith('rzp_test_') && process.env.PAYMENT_MODE !== 'production');
     return {
       stripe: {
-        configured: Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET),
+        configured: Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET && liveModeReady && httpsReady && (!production || process.env.STRIPE_SECRET_KEY.startsWith('sk_live_'))),
         mode: process.env.PAYMENT_MODE || 'sandbox',
       },
       paypal: {
-        configured: Boolean(process.env.PAYPAL_CLIENT_ID && process.env.PAYPAL_CLIENT_SECRET && process.env.PAYPAL_WEBHOOK_ID),
+        configured: Boolean(process.env.PAYPAL_CLIENT_ID && process.env.PAYPAL_CLIENT_SECRET && process.env.PAYPAL_WEBHOOK_ID && liveModeReady && httpsReady),
         mode: process.env.PAYMENT_MODE || 'sandbox',
       },
       razorpay: {
-        configured: Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET && process.env.RAZORPAY_WEBHOOK_SECRET),
+        configured: Boolean(razorpayKeyModeReady && process.env.RAZORPAY_KEY_SECRET && process.env.RAZORPAY_WEBHOOK_SECRET && liveModeReady && httpsReady && razorpayRateReady),
         mode: process.env.PAYMENT_MODE || 'sandbox',
       },
       phonepe: {
-        configured: Boolean(process.env.PHONEPE_MERCHANT_ID && process.env.PHONEPE_SALT_KEY),
+        configured: false,
         mode: process.env.PAYMENT_MODE || 'sandbox',
       },
     };
@@ -426,24 +1002,86 @@ export class DataService {
     const registration = rows[0];
     if (!registration) throw new NotFoundException('Registration not found');
 
+    const requestedOrderId = String(payload.orderId ?? payload.order_id ?? '').trim();
+    if (!requestedOrderId) throw new BadRequestException('An exact order id is required to generate a receipt');
+    const orders = (await this.list('orders', { registration_id: registrationId })) as any[];
+    const order = orders.find((o) => String(o.id) === requestedOrderId);
+    if (!order) throw new NotFoundException('Order not found for this registration');
+    let paymentRef: string | null = null;
+    let paymentMethod: string | null = null;
+    let paymentDate: string | null = null;
+    let refunds: Record<string, any>[] = [];
+    const hasFinalPaymentState = ['PAID', 'REFUND_PENDING', 'PARTIALLY_REFUNDED', 'REFUNDED']
+      .includes(String(order.status).toUpperCase());
+    if (!hasFinalPaymentState) throw new BadRequestException('A verified payment is required to generate this order receipt');
+    const payments = (await this.list('payments', { order_id: order.id })) as any[];
+    const successfulPayments = payments.filter((payment) =>
+      String(payment.status).toUpperCase() === 'SUCCESS' &&
+      String(payment.provider).toLowerCase() === String(order.provider).toLowerCase() &&
+      Boolean(payment.provider_payment_id) &&
+      String(payment.provider_order_id || '') === String(order.provider_order_id || '') &&
+      Number(payment.amount) === Number(order.final_amount) &&
+      String(payment.currency).toUpperCase() === String(order.currency).toUpperCase() &&
+      Number(payment.gateway_amount) === Number(order.gateway_amount) &&
+      String(payment.gateway_currency).toUpperCase() === String(order.gateway_currency).toUpperCase(),
+    );
+    if (successfulPayments.length !== 1) {
+      throw new ServiceUnavailableException('Verified payment transaction is unavailable or inconsistent');
+    }
+    const successfulPayment = successfulPayments[0];
+    paymentRef = successfulPayment.provider_payment_id;
+    paymentMethod = successfulPayment.method || null;
+    paymentDate = successfulPayment.created_at || null;
+    refunds = (await this.list('refunds', { order_id: order.id })) as Record<string, any>[];
+
+    const money = (value: unknown, currency: string) => `${currency} ${Number(value ?? 0).toFixed(2)}`;
+
     const doc = new PDFDocument({ size: 'A4', margin: 48 });
-    const chunks: Buffer[] = [];
 
-    doc.on('data', (chunk: Buffer) => chunks.push(chunk));
-    doc.on('end', () => undefined);
-
-    doc.fontSize(22).text('Conference Registration Receipt', { align: 'center' });
+    doc.fontSize(22).text('Conference Registration Invoice', { align: 'center' });
     doc.moveDown();
-    doc.fontSize(12).text(`Receipt Number: ${this.generateReceiptNumber(registrationId)}`);
+    doc.fontSize(12).text(`Receipt Number: ${this.generateReceiptNumber(registrationId, order?.order_number)}`);
     doc.text(`Acknowledgement Number: ${this.generateAcknowledgementNumber(registrationId)}`);
+    if (order?.order_number) doc.text(`Order Number: ${order.order_number}`);
     doc.text(`Registration ID: ${registration.id}`);
-    doc.text(`Attendee: ${registration.full_name || 'N/A'}`);
-    doc.text(`Email: ${registration.email || 'N/A'}`);
-    doc.text(`Plan: ${registration.plan_name || 'N/A'}`);
-    doc.text(`Amount: $${Number(registration.amount_usd ?? registration.amount ?? 0).toFixed(2)}`);
-    doc.text(`Payment Provider: ${registration.payment_provider || 'N/A'}`);
-    doc.text(`Status: ${registration.payment_status || 'pending'}`);
     doc.text(`Issued At: ${new Date().toLocaleString()}`);
+    doc.moveDown(0.5);
+
+    doc.fontSize(13).text('Attendee', { underline: true });
+    doc.fontSize(12).text(`Name: ${registration.full_name || 'N/A'}`);
+    doc.text(`Email: ${registration.email || 'N/A'}`);
+    if (registration.phone && registration.phone !== 'Not provided') doc.text(`Phone: ${registration.phone}`);
+    if (registration.affiliation) doc.text(`Affiliation: ${registration.affiliation}`);
+    if (registration.country) doc.text(`Country: ${registration.country}`);
+    doc.moveDown(0.5);
+
+    doc.fontSize(13).text('Payment', { underline: true });
+    doc.fontSize(12).text(`Plan: ${registration.plan_name || registration.plan_key || 'N/A'}`);
+    doc.text(`Quantity: ${Number(order?.quantity ?? registration.quantity ?? 1)}`);
+    if (order) {
+      const cur = String(order.currency || 'USD');
+      doc.text(`Base Amount: ${money(order.base_amount, cur)}`);
+      if (Number(order.discount_amount) > 0) doc.text(`Discount: -${money(order.discount_amount, cur)}`);
+      doc.text(`Tax/Service Charge: ${money(order.tax_amount, cur)}`);
+      if (order.accommodation_option_id) {
+        doc.text(`Accommodation: ${order.accommodation_name || 'Accommodation'}`);
+        doc.text(`Stay: ${order.accommodation_check_in} to ${order.accommodation_check_out} (${Number(order.accommodation_nights)} night(s))`);
+        doc.text(`Accommodation Total: ${money(order.accommodation_total, cur)}`);
+      }
+      doc.text(`Total: ${money(order.final_amount, cur)}`);
+      // Razorpay settles in INR: show what was actually charged at the gateway.
+      doc.text(`Charged at gateway: ${String(successfulPayment.gateway_currency)} ${(Number(successfulPayment.gateway_amount) / 100).toFixed(2)}`);
+    } else {
+      doc.text(`Amount: ${money(registration.amount_usd ?? registration.amount, String(registration.currency || 'USD'))}`);
+    }
+    doc.text(`Payment Provider: ${order?.provider || registration.payment_provider || 'N/A'}`);
+    if (paymentMethod) doc.text(`Payment Method: ${paymentMethod}`);
+    if (paymentDate) doc.text(`Payment Date: ${new Date(paymentDate).toISOString()}`);
+    if (paymentRef) doc.text(`Payment Reference: ${paymentRef}`);
+    doc.text(`Status: ${order?.status || registration.payment_status || 'pending'}`);
+    for (const refund of refunds) {
+      doc.text(`Refund ${refund.provider_refund_id || refund.id}: ${String(refund.status).toUpperCase()} - ${String(refund.currency)} ${(Number(refund.amount_minor) / 100).toFixed(2)}`);
+    }
     doc.moveDown();
     doc.text('Thank you for registering. Please keep this receipt for your records.');
     doc.end();
@@ -457,7 +1095,7 @@ export class DataService {
 
     return {
       registrationId,
-      receiptNumber: this.generateReceiptNumber(registrationId),
+      receiptNumber: this.generateReceiptNumber(registrationId, order?.order_number),
       acknowledgementNumber: this.generateAcknowledgementNumber(registrationId),
       pdfBase64: pdfBuffer.toString('base64'),
       mimeType: 'application/pdf',
@@ -465,12 +1103,13 @@ export class DataService {
     };
   }
 
-  async getReceipt(registrationId: string) {
+  async getReceipt(registrationId: string, orderId?: string) {
+    if (!String(orderId || '').trim()) throw new BadRequestException('An exact order id is required to generate a receipt');
     const rows = await this.list('registration_intents', { id: registrationId }) as any[];
     const registration = rows[0];
     if (!registration) throw new NotFoundException('Registration not found');
 
-    const result = await this.generateReceipt({ registrationId });
+    const result = await this.generateReceipt({ registrationId, orderId });
     return {
       registrationId,
       receiptNumber: result.receiptNumber,
@@ -480,14 +1119,27 @@ export class DataService {
     };
   }
 
-  private async sendPaymentSuccessNotification(registrationId: string, registration: Record<string, unknown> | null) {
+  async sendPaymentSuccessNotification(registrationId: string, registration: Record<string, unknown> | null) {
     const rows = await this.list('registration_intents', { id: registrationId }) as any[];
     const row = rows[0] || registration;
     if (!row || !row.email) return null;
 
+    const gatewayResponse = row.gateway_response && typeof row.gateway_response === 'object' && !Array.isArray(row.gateway_response)
+      ? row.gateway_response as Record<string, unknown>
+      : {};
+    const orderId = String(gatewayResponse.orderId || '');
+    const orders = orderId
+      ? await this.list('orders', { id: orderId, registration_id: registrationId }) as Record<string, any>[]
+      : [];
+    const order = orders[0];
+    const payments = order ? await this.list('payments', { order_id: order.id, status: 'SUCCESS' }) as Record<string, any>[] : [];
+    const payment = payments[0];
     const acknowledgementNumber = this.generateAcknowledgementNumber(registrationId);
-    const receiptNumber = `RCPT-${new Date().getFullYear()}-${String(registrationId).slice(0, 8).toUpperCase()}`;
-    const amount = Number(row.amount_usd ?? row.amount ?? 0).toFixed(2);
+    const receiptNumber = this.generateReceiptNumber(registrationId, order?.order_number);
+    const currency = String(order?.gateway_currency || row.currency || 'USD');
+    const amount = order
+      ? (Number(order.gateway_amount) / 100).toFixed(2)
+      : Number(row.amount_usd ?? row.amount ?? 0).toFixed(2);
     const provider = String(row.payment_provider ?? 'gateway');
 
     const html = `
@@ -497,7 +1149,9 @@ export class DataService {
       <p><strong>Acknowledgement Number:</strong> ${acknowledgementNumber}</p>
       <p><strong>Receipt Number:</strong> ${receiptNumber}</p>
       <p><strong>Payment Provider:</strong> ${provider}</p>
-      <p><strong>Amount:</strong> $${amount}</p>
+      <p><strong>Amount:</strong> ${currency} ${amount}</p>
+      ${order?.order_number ? `<p><strong>Order Number:</strong> ${order.order_number}</p>` : ''}
+      ${payment?.provider_payment_id ? `<p><strong>Payment ID:</strong> ${payment.provider_payment_id}</p>` : ''}
       <p>You can present this acknowledgement number during check-in.</p>
     `;
 
@@ -520,8 +1174,9 @@ export class DataService {
     return `${prefix}-${suffix}-${new Date().getFullYear()}`;
   }
 
-  private generateReceiptNumber(registrationId: string) {
-    const suffix = String(registrationId).replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase() || 'RECEIPT';
+  private generateReceiptNumber(registrationId: string, orderNumber?: string) {
+    const source = orderNumber || registrationId;
+    const suffix = String(source).replace(/[^a-zA-Z0-9]/g, '').slice(-10).toUpperCase() || 'RECEIPT';
     return `RCPT-${suffix}-${new Date().getFullYear()}`;
   }
 
@@ -757,10 +1412,11 @@ export class DataService {
     }
   }
 
-  private async resolveRegistrationPlan(planKey: string) {
+  async resolveRegistrationPlan(planKey: string) {
     const match = /^(pre|early|mid|onspot)-(speaker|poster|student|delegate)$/.exec(planKey);
     if (!match) throw new BadRequestException('Invalid registration plan');
     const [, period, category] = match;
+    await this.assertRegistrationPeriodOpen(period);
     const priceField: Record<string, string> = { pre: 'preEarly', early: 'earlyBird', mid: 'midterm', onspot: 'onSpot' };
     let amount = DEFAULT_PRICES[category][period];
     let label = category.charAt(0).toUpperCase() + category.slice(1);
@@ -780,6 +1436,76 @@ export class DataService {
     }
     if (!Number.isFinite(amount) || amount <= 0) throw new BadRequestException('This registration plan is unavailable');
     return { amount, label };
+  }
+
+  private async assertRegistrationPeriodOpen(period: string) {
+    const settings = (await this.list('site_data', { data_key: 'important_dates' })) as any[];
+    if (!settings[0]?.value) throw new ServiceUnavailableException('Registration dates are not configured');
+
+    let windows: Array<Record<string, unknown>>;
+    try {
+      const parsed = JSON.parse(String(settings[0].value));
+      if (!Array.isArray(parsed)) throw new Error('Expected an array');
+      windows = parsed;
+    } catch {
+      throw new ServiceUnavailableException('Registration dates are invalid');
+    }
+
+    const window = windows.find((item) => item?.id === period);
+    if (!window) throw new BadRequestException('This registration period is not available');
+
+    const normalizeDate = (value: unknown) => {
+      if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+      const date = new Date(`${value}T00:00:00.000Z`);
+      return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value ? value : null;
+    };
+    const startDate = window.startDate == null || window.startDate === '' ? null : normalizeDate(window.startDate);
+    const endDate = window.endDate == null || window.endDate === '' ? null : normalizeDate(window.endDate);
+    if ((window.startDate && !startDate) || (window.endDate && !endDate) || (startDate && endDate && startDate > endDate)) {
+      throw new ServiceUnavailableException('Registration dates are invalid');
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    if ((startDate && today < startDate) || (endDate && today > endDate)) {
+      throw new BadRequestException('This registration period is closed');
+    }
+  }
+
+  // Authoritative price calculation. The backend recomputes every figure from the
+  // plan and coupon so the client-supplied amount is never trusted. Returns an
+  // immutable snapshot (base/discount/tax/final) suitable for an order record.
+  async computeRegistrationAmount(planKey: string, requestedCoupon?: string | null, quantity = 1) {
+    const count = Number(quantity);
+    if (!Number.isInteger(count) || count < 1 || count > 100) {
+      throw new BadRequestException('Quantity must be an integer between 1 and 100');
+    }
+    const plan = await this.resolveRegistrationPlan(String(planKey || '').trim().toLowerCase());
+    let discount = 0;
+    let couponCode: string | null = null;
+    const base = Math.round(plan.amount * count * 100) / 100;
+
+    const code = String(requestedCoupon || '').trim();
+    if (code) {
+      const coupon = await this.validateCoupon(code, base);
+      if (!coupon.valid) throw new BadRequestException(coupon.message || 'Invalid coupon');
+      discount = Math.min(Number(coupon.discount_amount) || 0, base);
+      couponCode = String(coupon.code);
+    }
+
+    const discounted = Math.max(0, base - discount);
+    const tax = Math.round(discounted * SERVICE_CHARGE_RATE * 100) / 100;
+    const final = Math.round((discounted + tax) * 100) / 100;
+
+    return {
+      planKey: String(planKey).trim().toLowerCase(),
+      planLabel: plan.label,
+      baseAmount: base,
+      discountAmount: Math.round(discount * 100) / 100,
+      taxAmount: tax,
+      finalAmount: final,
+      currency: 'USD',
+      couponCode,
+    };
   }
 
   private getTable(table: string) {
@@ -824,11 +1550,26 @@ export class DataService {
     return data;
   }
 
-  private normalizeValue(value: unknown) {
+  private normalizeValue(value: unknown, preserveIsoDatetime = false) {
     if (value === undefined) return null;
-    if (typeof value === 'object' && value !== null && !(value instanceof Date)) {
+    if (value instanceof Date) return this.toMysqlDateTime(value);
+    if (typeof value === 'object' && value !== null) {
       return JSON.stringify(value);
     }
+    // MySQL DATETIME columns reject ISO-8601 strings that carry a 'T'/'Z'
+    // (e.g. 2026-09-27T20:52:49.676Z), so a completed_at written with
+    // Date.toISOString() throws "Incorrect datetime value" and leaves the
+    // registration unsynced. Convert any top-level ISO datetime string to the
+    // 'YYYY-MM-DD HH:MM:SS' form MySQL accepts. JSON payloads are stringified
+    // above, so ISO timestamps embedded inside them are left untouched.
+    if (!preserveIsoDatetime && typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(value)) {
+      const parsed = new Date(value);
+      if (!Number.isNaN(parsed.getTime())) return this.toMysqlDateTime(parsed);
+    }
     return value;
+  }
+
+  private toMysqlDateTime(date: Date) {
+    return date.toISOString().slice(0, 19).replace('T', ' ');
   }
 }

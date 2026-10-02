@@ -16,9 +16,6 @@ type SiteData = Tables<"site_data">;
 
 const suggestedRows: Array<TablesInsert<"site_data">> = [
   { data_key: "hero_eyebrow", label: "Hero Eyebrow", value: getDefaultSiteDataValue("hero_eyebrow"), group_name: "hero", value_type: "text", is_public: true },
-  { data_key: "hero_title_primary", label: "Hero Title Primary", value: getDefaultSiteDataValue("hero_title_primary"), group_name: "hero", value_type: "text", is_public: true },
-  { data_key: "hero_title_secondary", label: "Hero Title Secondary", value: getDefaultSiteDataValue("hero_title_secondary"), group_name: "hero", value_type: "text", is_public: true },
-  { data_key: "hero_date_line", label: "Hero Date Line", value: getDefaultSiteDataValue("hero_date_line"), group_name: "hero", value_type: "text", is_public: true },
   { data_key: "hero_theme", label: "Hero Theme", value: getDefaultSiteDataValue("hero_theme"), group_name: "hero", value_type: "textarea", is_public: true },
   { data_key: "footer_description", label: "Footer Description", value: getDefaultSiteDataValue("footer_description"), group_name: "footer", value_type: "textarea", is_public: true },
   { data_key: "contact_email", label: "Contact Email", value: getDefaultSiteDataValue("contact_email"), group_name: "contact", value_type: "email", is_public: true },
@@ -26,6 +23,14 @@ const suggestedRows: Array<TablesInsert<"site_data">> = [
   { data_key: "organizer_name", label: "Organizer Name", value: getDefaultSiteDataValue("organizer_name"), group_name: "conference", value_type: "text", is_public: true },
   { data_key: "conference_venue", label: "Conference Venue", value: getDefaultSiteDataValue("conference_venue"), group_name: "contact", value_type: "text", is_public: true },
 ];
+
+const websiteContentManagedSiteDataKeys = new Set([
+  "hero_title_primary",
+  "hero_title_secondary",
+  "hero_date_line",
+  "conference_start_datetime_utc",
+  "conference_end_datetime_utc",
+]);
 
 const emptyRow = {
   data_key: "",
@@ -55,7 +60,7 @@ const AdminSiteData = () => {
       return;
     }
 
-    setRows(data || []);
+    setRows((data || []).filter((row: SiteData) => !websiteContentManagedSiteDataKeys.has(row.data_key)));
   }, [toast]);
 
   useEffect(() => {

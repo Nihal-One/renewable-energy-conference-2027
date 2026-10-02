@@ -1,4 +1,4 @@
-# 🚀 Deployment Guide - Production Ready
+# Deployment Guide
 
 This guide will help you deploy your conference application using the following stack:
 - **Domain**: Hostinger
@@ -17,6 +17,24 @@ This guide will help you deploy your conference application using the following 
 - [ ] Environment variables prepared
 - [ ] Database migrations tested locally
 - [ ] Code committed to Git repository
+
+## Payment Go-Live Gate
+
+The payment code defaults to sandbox mode. In `NODE_ENV=production`, checkout is rejected unless `PAYMENT_MODE=production`, the selected provider has live credentials and webhook verification configured, the frontend origin uses HTTPS, and Razorpay has an explicit positive `RAZORPAY_USD_TO_INR` rate. The admin provider-status panel applies the same checks.
+
+Before enabling checkout, configure each provider that will be offered:
+
+- Razorpay: live `RAZORPAY_KEY_ID`/`RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, and the agreed USD-to-INR rate. Register `https://<api-domain>/payments/webhook/razorpay` for captured, failed, and refund events.
+- Stripe: live `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`. Register `https://<api-domain>/payments/webhook/stripe` for Checkout completion/expiry, PaymentIntent success, and refund updates.
+- PayPal: live `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, and `PAYPAL_WEBHOOK_ID`. Register `https://<api-domain>/payments/webhook/paypal` for capture completed/denied and capture refunded events.
+
+The webhook URLs above are deployment targets, not verified live endpoints. Confirm reachability, signing secrets, provider retries, and test-mode transactions in each provider dashboard before launch. A successful browser redirect is not proof of settlement. Do not enable a provider in the checkout UI unless its live credentials and webhooks have been verified.
+
+Apply and verify database migrations before deploying checkout: run `npm run migrate:deploy` from `backend/`. Payment success is displayed only after the no-cache status endpoint confirms a matching successful transaction for the exact order; receipts require that exact order ID and verified payment record. Before launch, run `npm test -- --runInBand` from `backend/` and complete separate sandbox payments for at least two customers, confirming that each status and receipt contains only its own order/payment identifiers and amounts.
+
+Accommodation is optional and is included in the same payment order as registration. After applying migrations, configure options in Admin → Accommodation with USD nightly rates and, when applicable, room capacity and availability dates. Guests reserve one room per registration; nights are check-out minus check-in. Coupons and the existing service charge apply to registration only. Configure the conference UTC start/end values in Admin → Settings, or explicitly allow an option to be booked outside that date range, before accepting accommodation reservations.
+
+For Docker Compose, provide `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_ROOT_PASSWORD`, `DATABASE_URL`, `SHADOW_DATABASE_URL`, `JWT_SECRET`, `FRONTEND_URL`, and `NEXT_PUBLIC_API_URL` in an untracked environment file. Use a dedicated least-privilege application DB user; do not reuse the MySQL root password. URL-encode reserved characters in MySQL connection-string credentials.
 
 ---
 

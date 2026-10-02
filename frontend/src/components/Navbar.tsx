@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown, Menu, X, Zap } from "lucide-react";
 import { useWebsiteContent } from "@/hooks/useWebsiteContent";
+import { useSiteData } from "@/hooks/useSiteData";
 
 const navLinks = [
   { label: "Home", path: "/" },
@@ -35,7 +36,8 @@ const Navbar = () => {
   const navRef = useRef<HTMLElement>(null);
   const pathname = usePathname();
   const { getSection } = useWebsiteContent();
-  const brand = getSection("site_brand", { title: "Renewable Energy", content: "Conference 2027" });
+  const { values } = useSiteData();
+  const brand = getSection("site_brand", { title: values.hero_eyebrow });
 
   const scrollHomeToTop = (event: React.MouseEvent<HTMLAnchorElement>) => {
     if (pathname !== "/") return;

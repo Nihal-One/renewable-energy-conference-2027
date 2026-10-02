@@ -33,11 +33,7 @@ const keyTopicStats = [
 
 const AboutSection = () => {
   const { getSection } = useWebsiteContent();
-  const about = getSection("home_about", {
-    title: "World Conference on Renewable Energy & Sustainable Energy",
-    content:
-      "The World Conference on Renewable Energy & Sustainable Energy (Renewable Energy - 2027) is a distinguished global forum designed to convene leading scientists, keynote speakers, industry pioneers, and policy leaders in the field of energy and sustainability.\n\nThis high-impact virtual conference aims to showcase cutting-edge research, foster interdisciplinary dialogue, and drive strategic collaborations that accelerate the transition toward a low-carbon and sustainable energy future.\n\nRenewable Energy - 2027 offers an exclusive platform for thought leaders to present transformative ideas, engage with an international audience, and contribute to shaping the global energy agenda.",
-  });
+  const about = getSection("about_intro", { title: "About the Conference" });
   const benefits = getSection("home_speaker_benefits", {
     title: "Why Participate as a Speaker",
     content: speakerBenefits.map((item) => `${item.title} | ${item.text}`).join("\n"),

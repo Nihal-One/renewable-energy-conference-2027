@@ -1,3 +1,32 @@
+export type PublicSpeakerSession = {
+  id: string;
+  title: string;
+  description: string;
+  startTime: string;
+  endTime: string;
+  room: string;
+};
+
+export type PublicSpeakerProfile = {
+  speaker: Tables<"speakers">;
+  sessions: PublicSpeakerSession[];
+};
+
+export type AccommodationOption = {
+  id: string;
+  name: string;
+  description: string | null;
+  price_per_night: number;
+  currency: string;
+  available_from: string | null;
+  available_until: string | null;
+  minimum_nights: number;
+  maximum_nights: number | null;
+  capacity: number | null;
+  allow_outside_conference_dates: boolean;
+  is_active: boolean;
+};
+
 export type Json =
   | string
   | number
@@ -230,6 +259,9 @@ export type Database = {
       }
       registration_intents: {
         Row: {
+          accommodation_check_in: string | null
+          accommodation_check_out: string | null
+          accommodation_option_id: string | null
           affiliation: string | null
           amount_usd: number
           cancelled_at: string | null
@@ -249,6 +281,7 @@ export type Database = {
           payment_session_id: string | null
           payment_status: string
           phone: string
+          quantity: number
           plan_key: string
           plan_name: string
           redirect_url: string | null
@@ -257,6 +290,9 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          accommodation_check_in?: string | null
+          accommodation_check_out?: string | null
+          accommodation_option_id?: string | null
           affiliation?: string | null
           amount_usd: number
           cancelled_at?: string | null
@@ -276,6 +312,7 @@ export type Database = {
           payment_session_id?: string | null
           payment_status?: string
           phone: string
+          quantity?: number
           plan_key: string
           plan_name: string
           redirect_url?: string | null
@@ -284,6 +321,9 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          accommodation_check_in?: string | null
+          accommodation_check_out?: string | null
+          accommodation_option_id?: string | null
           affiliation?: string | null
           amount_usd?: number
           cancelled_at?: string | null
@@ -303,6 +343,7 @@ export type Database = {
           payment_session_id?: string | null
           payment_status?: string
           phone?: string
+          quantity?: number
           plan_key?: string
           plan_name?: string
           redirect_url?: string | null
@@ -310,6 +351,28 @@ export type Database = {
           status?: string
           updated_at?: string
         }
+        Relationships: []
+      }
+      accommodation_options: {
+        Row: AccommodationOption & {
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          allow_outside_conference_dates?: boolean
+          available_from?: string | null
+          available_until?: string | null
+          capacity?: number | null
+          currency?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          maximum_nights?: number | null
+          minimum_nights?: number
+          name: string
+          price_per_night: number
+        }
+        Update: Partial<Database["public"]["Tables"]["accommodation_options"]["Insert"]>
         Relationships: []
       }
       site_data: {
@@ -356,12 +419,15 @@ export type Database = {
           id: string
           image_url: string | null
           is_visible: boolean | null
+          linkedin_url: string | null
           name: string
           organization: string | null
           session_type: string | null
           title: string | null
           topic: string | null
+          twitter_url: string | null
           updated_at: string | null
+          website_url: string | null
         }
         Insert: {
           bio?: string | null
@@ -370,12 +436,15 @@ export type Database = {
           id?: string
           image_url?: string | null
           is_visible?: boolean | null
+          linkedin_url?: string | null
           name: string
           organization?: string | null
           session_type?: string | null
           title?: string | null
           topic?: string | null
+          twitter_url?: string | null
           updated_at?: string | null
+          website_url?: string | null
         }
         Update: {
           bio?: string | null
@@ -384,12 +453,15 @@ export type Database = {
           id?: string
           image_url?: string | null
           is_visible?: boolean | null
+          linkedin_url?: string | null
           name?: string
           organization?: string | null
           session_type?: string | null
           title?: string | null
           topic?: string | null
+          twitter_url?: string | null
           updated_at?: string | null
+          website_url?: string | null
         }
         Relationships: []
       }

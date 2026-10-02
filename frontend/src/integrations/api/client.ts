@@ -1,4 +1,5 @@
-import type { Database } from "./types";
+import type { Database, PublicSpeakerProfile } from "./types";
+import { PUBLIC_CONTENT_UPDATED_EVENT } from "./publicContentEvents";
 
 type QueryResult<T = unknown> = { data: T | null; error: { message: string } | null };
 type AuthUser = { id: string; email?: string; user_metadata?: Record<string, unknown>; role?: string };
@@ -67,6 +68,7 @@ const request = async <T>(path: string, options: RequestInit = {}): Promise<Quer
     const session = readSession();
     const response = await fetch(`${API_BASE_URL}${path}`, {
       ...options,
+      cache: options.cache ?? "no-store",
       headers: {
         "Content-Type": "application/json",
         ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
@@ -75,6 +77,14 @@ const request = async <T>(path: string, options: RequestInit = {}): Promise<Quer
     });
     const data = await response.json().catch(() => null);
     if (!response.ok) return { data: null, error: { message: data?.message || response.statusText } };
+    if (
+      typeof window !== "undefined" &&
+      options.method &&
+      options.method !== "GET" &&
+      /^\/data\/(?:site_data|website_content|speakers|media_partners|information_blocks)(?:\/|$)/.test(path)
+    ) {
+      window.dispatchEvent(new Event(PUBLIC_CONTENT_UPDATED_EVENT));
+    }
     return { data, error: null };
   } catch (error) {
     return { data: null, error: { message: error instanceof Error ? error.message : "API request failed" } };
@@ -92,7 +102,6 @@ class LocalQuery<T = unknown> implements PromiseLike<QueryResult<T>> {
   constructor(private readonly table: string) {}
 
   select(..._columns: string[]) {
-    this.mode = "select";
     return this;
   }
 
@@ -193,6 +202,10 @@ export const apiClient = {
   functions: {
     invoke: <T = unknown>(name: string, options: { body?: unknown } = {}) =>
       request<T>(`/functions/${name}`, { method: "POST", body: JSON.stringify(options.body ?? {}) }),
+  },
+  speakers: {
+    getProfile: (id: string) =>
+      request<PublicSpeakerProfile>(`/data/speakers/${encodeURIComponent(id)}/profile`),
   },
   storage: {
     from: (bucket: string) => ({

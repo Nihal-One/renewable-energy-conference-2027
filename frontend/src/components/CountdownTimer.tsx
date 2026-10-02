@@ -2,12 +2,10 @@
 
 import { useState, useEffect } from "react";
 
-const targetDate = new Date("2027-03-03T09:00:00");
-
 const emptyTimeLeft = { days: 0, hours: 0, minutes: 0, seconds: 0 };
 
-const getTimeLeft = () => {
-  const diff = targetDate.getTime() - new Date().getTime();
+const getTimeLeft = (start: number, now: number) => {
+  const diff = start - now;
   if (diff <= 0) return emptyTimeLeft;
   return {
     days: Math.floor(diff / (1000 * 60 * 60 * 24)),
@@ -17,15 +15,39 @@ const getTimeLeft = () => {
   };
 };
 
-const CountdownTimer = () => {
-  const [timeLeft, setTimeLeft] = useState(emptyTimeLeft);
+interface CountdownTimerProps {
+  startDateTime?: string;
+  endDateTime?: string;
+}
+
+const CountdownTimer = ({ startDateTime, endDateTime }: CountdownTimerProps) => {
+  const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => {
-    setTimeLeft(getTimeLeft());
-    const timer = setInterval(() => setTimeLeft(getTimeLeft()), 1000);
+    const update = () => setNow(Date.now());
+    update();
+    const timer = setInterval(update, 1000);
     return () => clearInterval(timer);
   }, []);
 
+  const start = startDateTime ? new Date(startDateTime).getTime() : Number.NaN;
+  const end = endDateTime ? new Date(endDateTime).getTime() : Number.NaN;
+  const validStart = Number.isFinite(start);
+  const validEnd = Number.isFinite(end);
+  const finished = validStart && validEnd && now !== null && now >= end;
+  const underway = validStart && now !== null && now >= start && (!validEnd || now < end);
+
+  if (!validStart) {
+    return <p className="py-3 text-center text-sm font-semibold text-muted-foreground">Conference date not configured</p>;
+  }
+  if (finished) {
+    return <p className="py-3 text-center text-sm font-semibold text-muted-foreground">Conference has concluded</p>;
+  }
+  if (underway) {
+    return <p className="py-3 text-center text-sm font-semibold text-teal">Conference is underway</p>;
+  }
+
+  const timeLeft = now === null ? emptyTimeLeft : getTimeLeft(start, now);
   const units = [
     { value: timeLeft.days, label: "Days" },
     { value: timeLeft.hours, label: "Hours" },

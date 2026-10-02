@@ -1,7 +1,7 @@
 "use client";
 
 import type { FormEvent, ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiClient } from "@/integrations/api/client";
+import { useLiveContentRefresh } from "@/hooks/useLiveContentRefresh";
 import type { Tables } from "@/integrations/api/types";
 
 type InformationBlock = Tables<"information_blocks">;
@@ -153,21 +154,17 @@ const Information = () => {
     return () => window.removeEventListener("hashchange", selectSectionFromHash);
   }, [pathname]);
 
-  useEffect(() => {
-    const fetchBlocks = async () => {
-      const { data } = await apiClient
-        .from("information_blocks")
-        .select("*")
-        .eq("is_visible", true)
-        .order("display_order", { ascending: true });
+  const fetchBlocks = useCallback(async () => {
+    const { data } = await apiClient
+      .from("information_blocks")
+      .select("*")
+      .eq("is_visible", true)
+      .order("display_order", { ascending: true });
 
-      if (data) {
-        setManagedBlocks(data);
-      }
-    };
-
-    fetchBlocks();
+    if (data) setManagedBlocks(data);
   }, []);
+
+  useLiveContentRefresh(fetchBlocks);
 
   const activeTitle = useMemo(
     () => infoNav.find((item) => item.id === activeSection)?.title || "Information",

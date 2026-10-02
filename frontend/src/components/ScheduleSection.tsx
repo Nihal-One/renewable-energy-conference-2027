@@ -3,11 +3,12 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { splitLines, useWebsiteContent } from "@/hooks/useWebsiteContent";
+import { useSiteData } from "@/hooks/useSiteData";
 
 const schedule = [
   {
     day: "Day 1",
-    date: "March 3, 2027",
+    date: "",
     events: [
       { time: "09:00 - 09:30", title: "Registration & Networking" },
       { time: "09:30 - 09:45", title: "Opening Ceremony & Welcome Address" },
@@ -29,7 +30,7 @@ const schedule = [
   },
   {
     day: "Day 2",
-    date: "March 4, 2027",
+    date: "",
     events: [
       { time: "09:00 - 09:15", title: "Welcome Note" },
       { time: "09:15 - 09:45", title: "Plenary Speaker Session" },
@@ -53,10 +54,22 @@ const schedule = [
 const ScheduleSection = () => {
   const [activeDay, setActiveDay] = useState(0);
   const { getSection } = useWebsiteContent();
+  const { values } = useSiteData();
   const heading = getSection("schedule_heading", { title: "Conference Schedule", content: "Conference Agenda" });
+  const conferenceStart = values.conference_start_datetime_utc
+    ? new Date(values.conference_start_datetime_utc)
+    : null;
   const managedSchedule = schedule.map((day, index) => {
+    const scheduledDate = conferenceStart && !Number.isNaN(conferenceStart.getTime())
+      ? new Intl.DateTimeFormat("en-US", {
+          timeZone: "UTC",
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+        }).format(new Date(conferenceStart.getTime() + index * 24 * 60 * 60 * 1000))
+      : "";
     const section = getSection(`schedule_day_${index + 1}`, {
-      title: day.date,
+      title: scheduledDate || "Date to be announced",
       content: day.events.map((event) => `${event.time} | ${event.title}`).join("\n"),
     });
 

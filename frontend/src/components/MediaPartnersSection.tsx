@@ -1,9 +1,10 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { Globe2 } from "lucide-react";
 import { apiClient } from "@/integrations/api/client";
+import { useLiveContentRefresh } from "@/hooks/useLiveContentRefresh";
 import type { Tables } from "@/integrations/api/types";
 
 type MediaPartner = Tables<"media_partners">;
@@ -26,21 +27,7 @@ const MediaPartnersSection = () => {
     }
   }, []);
 
-  useEffect(() => {
-    fetchPartners();
-
-    const channel = apiClient
-      .channel("public-media-partners")
-      .on("postgres_changes", { event: "*", schema: "public", table: "media_partners" }, fetchPartners)
-      .subscribe();
-
-    window.addEventListener("focus", fetchPartners);
-
-    return () => {
-      window.removeEventListener("focus", fetchPartners);
-      apiClient.removeChannel(channel);
-    };
-  }, [fetchPartners]);
+  useLiveContentRefresh(fetchPartners);
 
   const repeatedPartners = partners.flatMap((partner) =>
     Array.from({ length: getCardCount(partner.display_order) }, (_, index) => ({

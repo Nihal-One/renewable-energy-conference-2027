@@ -20,8 +20,11 @@ const emptySpeaker = {
   topic: "",
   bio: "",
   image_url: "",
+  website_url: "",
+  linkedin_url: "",
+  twitter_url: "",
   session_type: "keynote",
-  display_order: 0,
+  display_order: 1,
   is_visible: true,
 };
 
@@ -69,6 +72,9 @@ const AdminSpeakers = () => {
       topic: form.topic.trim() || null,
       bio: form.bio.trim() || null,
       image_url: form.image_url.trim() || null,
+      website_url: form.website_url.trim() || null,
+      linkedin_url: form.linkedin_url.trim() || null,
+      twitter_url: form.twitter_url.trim() || null,
       session_type: form.session_type.trim() || null,
       display_order: Number.isNaN(form.display_order) ? 0 : form.display_order,
       is_visible: form.is_visible,
@@ -99,6 +105,9 @@ const AdminSpeakers = () => {
       topic: speaker.topic || "",
       bio: speaker.bio || "",
       image_url: speaker.image_url || "",
+      website_url: speaker.website_url || "",
+      linkedin_url: speaker.linkedin_url || "",
+      twitter_url: speaker.twitter_url || "",
       session_type: speaker.session_type || "keynote",
       display_order: speaker.display_order || 0,
       is_visible: speaker.is_visible ?? true,
@@ -192,6 +201,26 @@ const AdminSpeakers = () => {
                 value={form.image_url}
                 onChange={(e) => setForm({ ...form, image_url: e.target.value })}
               />
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <Input
+                  type="url"
+                  placeholder="Website URL"
+                  value={form.website_url}
+                  onChange={(e) => setForm({ ...form, website_url: e.target.value })}
+                />
+                <Input
+                  type="url"
+                  placeholder="LinkedIn URL"
+                  value={form.linkedin_url}
+                  onChange={(e) => setForm({ ...form, linkedin_url: e.target.value })}
+                />
+                <Input
+                  type="url"
+                  placeholder="X / Twitter URL"
+                  value={form.twitter_url}
+                  onChange={(e) => setForm({ ...form, twitter_url: e.target.value })}
+                />
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
                 <div>
                   <label className="text-xs text-muted-foreground">Number of cards (0 hides from site)</label>

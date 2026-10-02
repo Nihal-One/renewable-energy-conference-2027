@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import CountdownTimer from "./CountdownTimer";
 import Link from "next/link";
 import { useSiteData } from "@/hooks/useSiteData";
+import { useWebsiteContent } from "@/hooks/useWebsiteContent";
 import { CalendarDays, Download, Leaf, Lightbulb, Network, Send, Ticket, TrendingUp, Users } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { apiClient } from "@/integrations/api/client";
@@ -14,11 +15,18 @@ import { Textarea } from "@/components/ui/textarea";
 
 const HeroSection = () => {
   const { values } = useSiteData();
+  const { getSection } = useWebsiteContent();
   const { toast } = useToast();
   const [brochureDialogOpen, setBrochureDialogOpen] = useState(false);
   const [brochureSubmitted, setBrochureSubmitted] = useState(false);
   const [isSubmittingBrochure, setIsSubmittingBrochure] = useState(false);
-  const heroTitleLines = [values.hero_title_primary, values.hero_title_secondary];
+  const configuredTitle = getSection("hero_title").content.trim();
+  const configuredTitleLines = configuredTitle.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const ampersandIndex = configuredTitle.indexOf("&");
+  const heroTitleLines = configuredTitleLines.length === 1 && ampersandIndex > 0
+    ? [configuredTitle.slice(0, ampersandIndex).trim(), configuredTitle.slice(ampersandIndex).trim()]
+    : configuredTitleLines;
+  const configuredDateLine = getSection("hero_subtitle").content.trim();
 
   const handleBrochureSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -66,9 +74,9 @@ const HeroSection = () => {
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_82%_20%,rgba(250,204,21,0.30),transparent_25%),linear-gradient(180deg,transparent,rgba(6,36,29,0.42))]" />
       <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-hero-bg/35 to-transparent" />
 
-      <div className="container relative z-10 mx-auto px-4">
+      <div className="relative z-10 mx-auto w-full px-4">
         <div className="flex justify-center">
-          <div className="w-full max-w-[900px] text-center">
+          <div className="w-full text-center">
             <motion.p
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -82,12 +90,12 @@ const HeroSection = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.1 }}
-              className="mb-3 max-w-full text-[18px] font-black uppercase leading-[1.2] tracking-[-0.05em] text-white sm:text-[20px] lg:text-[22px]"
+              className="mb-3 w-full max-w-none text-[clamp(1rem,3.2vw,3rem)] font-black uppercase leading-[1.05] tracking-[-0.035em] text-white"
             >
               {heroTitleLines.map((line, index) => (
                 <span
                   key={`${line}-${index}`}
-                  className={`block ${index === 1 ? "whitespace-nowrap text-gold" : "font-display text-[22px] leading-[1.15] tracking-[-0.03em] text-white sm:text-[28px] lg:text-[34px]"}`}
+                  className={`block ${index === 1 ? "text-[clamp(1.125rem,2.3vw,2rem)] leading-[1.15] text-gold" : "md:whitespace-nowrap"}`}
                 >
                   {line}
                 </span>
@@ -102,7 +110,7 @@ const HeroSection = () => {
             >
               <span className="inline-flex items-center gap-2 rounded-md bg-white px-4 py-3 text-sm font-extrabold text-hero-bg shadow-lg">
                 <CalendarDays size={18} className="text-teal" />
-                March 3-4, 2027 | Virtual online,
+                {configuredDateLine}
               </span>
             </motion.div>
 
@@ -125,7 +133,10 @@ const HeroSection = () => {
                 <p className="mb-2 text-center text-xs font-extrabold uppercase tracking-[0.1em] text-teal">
                   Conference Starts In
                 </p>
-                <CountdownTimer />
+                <CountdownTimer
+                  startDateTime={values.conference_start_datetime_utc}
+                  endDateTime={values.conference_end_datetime_utc}
+                />
               </div>
             </motion.div>
 

@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { apiClient } from "@/integrations/api/client";
 import type { Tables } from "@/integrations/api/types";
+import { useLiveContentRefresh } from "@/hooks/useLiveContentRefresh";
 
 type WebsiteContent = Pick<Tables<"website_content">, "section_key" | "title" | "content">;
 
@@ -18,29 +19,17 @@ const legacySectionKeys: Record<string, string> = {
 export const useWebsiteContent = () => {
   const [rows, setRows] = useState<WebsiteContent[]>([]);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    const fetchContent = async () => {
-      const { data } = await apiClient.from("website_content").select("section_key,title,content");
-
-      if (isMounted && data) {
-        setRows(data);
-      }
-    };
-
-    fetchContent();
-
-    return () => {
-      isMounted = false;
-    };
+  const fetchContent = useCallback(async () => {
+    const { data } = await apiClient.from("website_content").select("section_key,title,content");
+    if (data) setRows(data);
   }, []);
+
+  useLiveContentRefresh(fetchContent);
 
   const sections = useMemo(
     () => new Map(rows.map((row) => [row.section_key, row])),
     [rows],
   );
-
   const getSection = (key: string, fallback: SectionFallback = {}) => {
     const row = sections.get(key) || sections.get(legacySectionKeys[key]);
 

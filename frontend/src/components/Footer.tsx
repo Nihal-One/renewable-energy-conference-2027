@@ -14,13 +14,13 @@ const Footer = () => {
         <div className="grid grid-cols-1 gap-10 md:grid-cols-3 md:gap-12">
           <div>
             <h3 className="mb-5 font-display text-xl font-black uppercase tracking-wide text-hero-foreground">
-              Renewable Energy <span className="text-gold">2027</span>
+              {values.hero_eyebrow}
             </h3>
             <p className="max-w-md text-sm leading-7 text-section-dark-foreground/75 font-body">
               {values.footer_description}
             </p>
             <p className="mt-5 border-l-2 border-gold pl-3 text-xs font-bold uppercase tracking-[0.16em] text-gold">
-              Organized by NVS International Services
+              {values.organizer_name}
             </p>
           </div>
           <div>
@@ -55,7 +55,7 @@ const Footer = () => {
               </div>
               <div className="flex items-center gap-2">
                 <MapPin size={16} className="text-gold" />
-                <span>Hyderabad, Telangana 500060, India</span>
+                <span>{values.conference_venue}</span>
               </div>
             </div>
           </div>
@@ -63,7 +63,7 @@ const Footer = () => {
         <div className="mt-12 flex flex-col gap-2 border-t border-white/10 pt-6 text-center text-xs text-section-dark-foreground/50 font-body sm:flex-row sm:items-center sm:justify-between sm:text-left">
           <span className="inline-flex items-center gap-1.5">
             <Copyright size={13} aria-hidden="true" />
-            <span>2027 Renewable Energy Conference. All rights reserved.</span>
+            <span>{values.hero_eyebrow}. All rights reserved.</span>
           </span>
           <Image
             src="/nvs-international-services-logo.jpe"

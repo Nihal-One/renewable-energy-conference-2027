@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import type { Tables, TablesInsert } from "@/integrations/api/types";
@@ -40,6 +40,7 @@ const AdminCoupons = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [generatedCoupon, setGeneratedCoupon] = useState<{ code: string; discount: string; link: string } | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const { toast } = useToast();
 
   const buildRegistrationLink = (code: string) => {
@@ -62,8 +63,23 @@ const AdminCoupons = () => {
     if (data) setCoupons(data);
   };
 
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await fetchCoupons();
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   useEffect(() => {
     fetchCoupons();
+    // Poll so the live usage counter (current_uses/max_uses) reflects orders that
+    // reserve coupon uses as they happen, without a manual reload.
+    const interval = window.setInterval(() => {
+      fetchCoupons();
+    }, 25_000);
+    return () => window.clearInterval(interval);
   }, []);
 
   const handleSave = async () => {
@@ -150,7 +166,11 @@ const AdminCoupons = () => {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="font-display">Manage Coupons</CardTitle>
-        <Dialog
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
+            <RefreshCw className={`w-4 h-4 mr-1 ${refreshing ? "animate-spin" : ""}`} /> Refresh
+          </Button>
+          <Dialog
           open={open}
           onOpenChange={(value) => {
             setOpen(value);
@@ -213,6 +233,7 @@ const AdminCoupons = () => {
             </div>
           </DialogContent>
         </Dialog>
+        </div>
       </CardHeader>
       <CardContent>
         {generatedCoupon ? (

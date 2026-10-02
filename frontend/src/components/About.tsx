@@ -4,6 +4,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import type { ReactNode } from "react";
 import { splitLines, splitParagraphs, useWebsiteContent } from "@/hooks/useWebsiteContent";
+import { useSiteData } from "@/hooks/useSiteData";
 
 const speakerBenefits = [
   "Global Recognition: Present your research to an international audience of experts",
@@ -119,6 +120,8 @@ const Section = ({
 
 const About = () => {
   const { getSection } = useWebsiteContent();
+  const { values } = useSiteData();
+  const conferenceTitle = getSection("hero_title").content;
   const intro = getSection("about_intro", {
     title: "About the Conference",
     content:
@@ -163,11 +166,11 @@ const About = () => {
       <Navbar />
       <div className="pt-20 hero-gradient py-20">
         <div className="container mx-auto max-w-5xl px-4">
-          <p className="mb-3 text-sm font-bold uppercase tracking-[0.22em] text-gold-light">Renewable Energy - 2027</p>
+          <p className="mb-3 text-sm font-bold uppercase tracking-[0.22em] text-gold-light">{values.hero_eyebrow}</p>
           <div className="mb-5 h-1 w-16 rounded-full bg-gold" />
           <h1 className="mb-5 font-display text-4xl font-bold leading-tight text-white md:text-6xl">About the Conference</h1>
           <p className="max-w-3xl text-lg leading-relaxed text-hero-foreground/80">
-            World Conference on Renewable Energy & Sustainable Energy
+            {conferenceTitle}
           </p>
         </div>
       </div>

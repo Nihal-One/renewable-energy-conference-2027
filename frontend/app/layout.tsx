@@ -5,12 +5,13 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/useAuth";
 import ScrollToTop from "@/components/ScrollToTop";
+import SiteDocumentTitle from "@/components/SiteDocumentTitle";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://renewableenergy2027.com";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  title: "Renewable Energy Conference 2027",
+  title: "Conference",
   description: "A global forum for renewable energy innovation and collaboration",
   icons: {
     icon: "/favicon.ico",
@@ -32,6 +33,7 @@ export default function RootLayout({
           <Toaster />
           <Sonner />
           <AuthProvider>
+            <SiteDocumentTitle />
             <ScrollToTop />
             {children}
           </AuthProvider>

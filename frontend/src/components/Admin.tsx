@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, Database, FileText, Handshake, Info, LayoutPanelTop, LogOut, Ticket, Users } from "lucide-react";
+import { BedDouble, CalendarDays, Database, FileText, Handshake, Info, LayoutPanelTop, LogOut, Ticket, Users } from "lucide-react";
+import AdminAccommodation from "@/components/admin/AdminAccommodation";
 import AdminSpeakers from "@/components/admin/AdminSpeakers";
 import AdminCoupons from "@/components/admin/AdminCoupons";
 import AdminMediaPartners from "@/components/admin/AdminMediaPartners";
@@ -60,7 +61,7 @@ const Admin = () => {
       {/* Admin Content */}
       <div className="container mx-auto px-4 py-8">
         <Tabs defaultValue="content" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 xl:grid-cols-8 max-w-7xl h-auto">
+          <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 xl:grid-cols-9 max-w-7xl h-auto">
             <TabsTrigger value="content" className="flex items-center gap-2">
               <LayoutPanelTop className="w-4 h-4" /> Content
             </TabsTrigger>
@@ -84,6 +85,9 @@ const Admin = () => {
             </TabsTrigger>
             <TabsTrigger value="coupons" className="flex items-center gap-2">
               <Ticket className="w-4 h-4" /> Coupons
+            </TabsTrigger>
+            <TabsTrigger value="accommodation" className="flex items-center gap-2">
+              <BedDouble className="w-4 h-4" /> Accommodation
             </TabsTrigger>
           </TabsList>
 
@@ -110,6 +114,9 @@ const Admin = () => {
           </TabsContent>
           <TabsContent value="coupons">
             <AdminCoupons />
+          </TabsContent>
+          <TabsContent value="accommodation">
+            <AdminAccommodation />
           </TabsContent>
         </Tabs>
       </div>
